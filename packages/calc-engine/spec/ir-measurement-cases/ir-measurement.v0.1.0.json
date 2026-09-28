@@ -1,0 +1,1032 @@
+{
+  "specId": "CG-IR-MEAS",
+  "specVersion": "0.1.0",
+  "notice": "SYNTHETIC mechanics cases. Item codes SYN-* are fictitious. No Iranian rule, unit, price or coefficient is represented.",
+  "cases": [
+    {
+      "id": "IRM-001",
+      "title": "floorCount and similarCount are separate factors",
+      "category": "counts",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "floorCount": "3",
+                  "similarCount": "2",
+                  "length": "4.5",
+                  "width": "3.2"
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "a": "86.4"
+        },
+        "itemTotals": {
+          "SYN-0001": "86.4"
+        }
+      },
+      "formula": "3 floors × 2 similar × 4.5 × 3.2",
+      "assumptions": ["Absent floorCount/similarCount would mean 1 and be traced as absent"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-002",
+      "title": "Absent counts, count profile",
+      "category": "counts",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0003",
+                "kind": "addition",
+                "unit": "each",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "count",
+                  "similarCount": "12"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "b",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0003",
+                "kind": "addition",
+                "unit": "each",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "count",
+                  "floorCount": "4",
+                  "similarCount": "3"
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "a": "12",
+          "b": "12"
+        },
+        "itemTotals": {
+          "SYN-0003": "24"
+        }
+      },
+      "formula": "12 + 4×3",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-003",
+      "title": "Cross-sheet reference",
+      "category": "references",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "wall",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "12.4",
+                  "width": "3.05"
+                },
+                "origin": "user"
+              }
+            ]
+          },
+          {
+            "sheetId": "S2",
+            "name": "S2",
+            "lines": [
+              {
+                "lineId": "paint",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0004",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "wall",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "wall": "37.82",
+          "paint": "37.82"
+        },
+        "itemTotals": {
+          "SYN-0001": "37.82",
+          "SYN-0004": "37.82"
+        }
+      },
+      "formula": "paint = wall (other sheet)",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-004",
+      "title": "Deductions and combined references",
+      "category": "references",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "wall",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "12.4",
+                  "width": "3.05"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "win",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "deduction",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "similarCount": "2",
+                  "length": "1.2",
+                  "width": "1.5"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "door",
+                "rowNo": 3,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "deduction",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "0.9",
+                  "width": "2.1"
+                },
+                "origin": "user"
+              }
+            ]
+          },
+          {
+            "sheetId": "S2",
+            "name": "S2",
+            "lines": [
+              {
+                "lineId": "plaster",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0004",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "wall",
+                      "factor": "1",
+                      "use": "signed"
+                    },
+                    {
+                      "lineId": "win",
+                      "factor": "1",
+                      "use": "signed"
+                    },
+                    {
+                      "lineId": "door",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "frame",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0005",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "win",
+                      "factor": "1",
+                      "use": "magnitude"
+                    },
+                    {
+                      "lineId": "door",
+                      "factor": "1",
+                      "use": "magnitude"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "wall": "37.82",
+          "win": "-3.6",
+          "door": "-1.89",
+          "plaster": "32.33",
+          "frame": "5.49"
+        },
+        "itemTotals": {
+          "SYN-0001": "32.33",
+          "SYN-0004": "32.33",
+          "SYN-0005": "5.49"
+        }
+      },
+      "formula": "plaster = wall + win(signed) + door(signed); frame = |win| + |door|",
+      "assumptions": [
+        "Whether openings are deducted is an Iranian measurement rule (unverified); this case only exercises mechanics"
+      ],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-005",
+      "title": "Restricted expression tree",
+      "category": "expressions",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "4",
+                  "width": "2.5"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "b",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0006",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "expression",
+                  "node": {
+                    "op": "sub",
+                    "args": [
+                      {
+                        "op": "mul",
+                        "args": [
+                          {
+                            "op": "const",
+                            "value": "2"
+                          },
+                          {
+                            "op": "ref",
+                            "lineId": "a",
+                            "use": "signed"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "const",
+                        "value": "1.25"
+                      }
+                    ]
+                  }
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "a": "10",
+          "b": "18.75"
+        },
+        "itemTotals": {
+          "SYN-0001": "10",
+          "SYN-0006": "18.75"
+        }
+      },
+      "formula": "b = 2×a − 1.25",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-006",
+      "title": "Rounding only where a rule targets it",
+      "category": "rounding",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [
+          {
+            "target": "reference-term",
+            "selector": {
+              "lineIds": ["r2"]
+            },
+            "scale": 2,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "1.5",
+                  "width": "1.23"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "r1",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0007",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "a",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "r2",
+                "rowNo": 3,
+                "description": "synthetic line",
+                "itemCode": "SYN-0008",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "a",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "a": "1.845",
+          "r1": "1.845",
+          "r2": "1.85"
+        },
+        "itemTotals": {
+          "SYN-0001": "1.845",
+          "SYN-0007": "1.845",
+          "SYN-0008": "1.85"
+        }
+      },
+      "formula": "r1 consumes exact a; r2 rounds its reference term HALF_UP(2)",
+      "assumptions": [
+        "No universal rounding: benchmark workflows round some formulas and not others"
+      ],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-007",
+      "title": "Manual quantity requires justification",
+      "category": "manual",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "m",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0009",
+                "kind": "addition",
+                "unit": "m3",
+                "quantity": {
+                  "type": "manual",
+                  "value": "7.5",
+                  "justification": "synthetic: measured on site"
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": {
+          "m": "7.5"
+        },
+        "itemTotals": {
+          "SYN-0009": "7.5"
+        }
+      },
+      "formula": "manual 7.5",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-008",
+      "title": "Circular reference rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "b",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "b",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "a",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "CIRCULAR_REFERENCE",
+            "lineId": "a"
+          }
+        ]
+      },
+      "formula": "a → b → a",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-009",
+      "title": "Unknown reference rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "zz",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "UNKNOWN_REFERENCE",
+            "lineId": "a"
+          }
+        ]
+      },
+      "formula": "zz does not exist",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-010",
+      "title": "Negative line magnitude rejected (deduction only via kind)",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "2",
+                  "width": "2"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "b",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "a",
+                      "factor": "-1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "NEGATIVE_LINE_MAGNITUDE",
+            "lineId": "b"
+          }
+        ]
+      },
+      "formula": "b = −1 × a < 0",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-011",
+      "title": "Dimension/profile mismatch rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "2"
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "DIMENSION_PROFILE_MISMATCH",
+            "lineId": "a"
+          }
+        ]
+      },
+      "formula": "LW needs width",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-012",
+      "title": "Referenced unit mismatch rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0002",
+                "kind": "addition",
+                "unit": "m3",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LWH",
+                  "length": "1",
+                  "width": "1",
+                  "height": "1"
+                },
+                "origin": "user"
+              },
+              {
+                "lineId": "b",
+                "rowNo": 2,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [
+                    {
+                      "lineId": "a",
+                      "factor": "1",
+                      "use": "signed"
+                    }
+                  ]
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "UNIT_MISMATCH",
+            "lineId": "b"
+          }
+        ]
+      },
+      "formula": "m3 referenced from m2",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-013",
+      "title": "Manual without justification rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "m",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0009",
+                "kind": "addition",
+                "unit": "m3",
+                "quantity": {
+                  "type": "manual",
+                  "value": "1",
+                  "justification": ""
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "MISSING_JUSTIFICATION",
+            "lineId": "m"
+          }
+        ]
+      },
+      "formula": "V8",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    },
+    {
+      "id": "IRM-014",
+      "title": "Non-integer floorCount rejected",
+      "category": "validation",
+      "input": {
+        "documentId": "syn-doc",
+        "title": "synthetic",
+        "specVersion": "0.1.0",
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "name": "S1",
+            "lines": [
+              {
+                "lineId": "a",
+                "rowNo": 1,
+                "description": "synthetic line",
+                "itemCode": "SYN-0001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "floorCount": "1.5",
+                  "length": "1",
+                  "width": "1"
+                },
+                "origin": "user"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "NON_INTEGER_COUNT",
+            "lineId": "a"
+          }
+        ]
+      },
+      "formula": "V2",
+      "assumptions": [],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      }
+    }
+  ]
+}

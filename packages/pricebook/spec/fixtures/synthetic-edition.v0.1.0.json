@@ -1,0 +1,140 @@
+{
+  "notice": "SYNTHETIC fixture for pipeline/validation tests. Not an Iranian price book. All codes, titles and prices are fictitious.",
+  "edition": {
+    "editionId": "syn-edition-0001",
+    "discipline": "abniye",
+    "year": "SYN",
+    "title": "Synthetic Test Edition",
+    "publication": {
+      "publisher": "SYNTHETIC",
+      "notificationNo": null,
+      "notificationDate": null,
+      "effectiveFrom": null
+    },
+    "sourceFiles": [
+      {
+        "sourceFileId": "syn-file-1",
+        "fileName": "synthetic.pdf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "pages": 3
+      }
+    ],
+    "status": "staging"
+  },
+  "chapters": [
+    {
+      "chapterNo": "SYN-01",
+      "title": "Synthetic chapter A",
+      "source": {
+        "sourceDocument": "Synthetic Test Edition",
+        "edition": "SYN",
+        "page": "1",
+        "section": "SYN-01",
+        "sourceFileId": "syn-file-1",
+        "sourceFileHash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "status": "unverified"
+    }
+  ],
+  "unitMappings": [
+    {
+      "printedLabel": "SYN-SQM",
+      "unitCode": "m2",
+      "status": "unverified"
+    },
+    {
+      "printedLabel": "SYN-CUM",
+      "unitCode": "m3",
+      "status": "unverified"
+    }
+  ],
+  "items": [
+    {
+      "itemCode": "SYN-0001",
+      "chapterNo": "SYN-01",
+      "description": "Synthetic area item",
+      "unitLabel": "SYN-SQM",
+      "basePrice": "1000",
+      "source": {
+        "sourceDocument": "Synthetic Test Edition",
+        "edition": "SYN",
+        "page": "2",
+        "section": "SYN-01",
+        "sourceFileId": "syn-file-1",
+        "sourceFileHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "locator": {
+          "row": 1
+        }
+      },
+      "status": "unverified",
+      "itemClass": "base"
+    },
+    {
+      "itemCode": "SYN-0002",
+      "chapterNo": "SYN-01",
+      "description": "Synthetic volume item",
+      "unitLabel": "SYN-CUM",
+      "basePrice": "2500",
+      "source": {
+        "sourceDocument": "Synthetic Test Edition",
+        "edition": "SYN",
+        "page": "2",
+        "section": "SYN-01",
+        "sourceFileId": "syn-file-1",
+        "sourceFileHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "locator": {
+          "row": 2
+        }
+      },
+      "status": "unverified",
+      "itemClass": "base"
+    }
+  ],
+  "coefficientDefinitions": [
+    {
+      "id": "syn-coef-floor",
+      "kind": "floor",
+      "title": "Synthetic placeholder",
+      "text": "",
+      "structure": "unstructured",
+      "source": {
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "status": "unverified",
+      "appendixNo": 2
+    },
+    {
+      "id": "syn-coef-regional",
+      "kind": "regional",
+      "title": "Synthetic placeholder",
+      "text": "",
+      "structure": "unstructured",
+      "source": {
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "status": "unverified",
+      "appendixNo": 4
+    },
+    {
+      "id": "syn-coef-overhead",
+      "kind": "overhead",
+      "title": "Synthetic placeholder",
+      "text": "",
+      "structure": "unstructured",
+      "source": {
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "status": "unverified",
+      "appendixNo": 3
+    }
+  ]
+}

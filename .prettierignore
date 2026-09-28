@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+dist
+coverage
+.turbo
+
+# playwright E2E artifacts
+apps/web/e2e/.playwright-artifacts/

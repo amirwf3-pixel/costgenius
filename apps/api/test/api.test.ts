@@ -824,7 +824,9 @@ describe('§25/§26 safety scan of the API source', () => {
         // file are exactly that field and that schema name (twice); no VALUE ever
         // lives here (Zod validates shapes only).
         const passwordFields = code.split('password').length - 1;
-        expect(passwordFields).toBe(3); // login field + schema name (decl + type ref)
+        // P8-A S2 adds exactly one: the createUserSchema `password` field
+        // (CG-GOV §2.3) — still shapes only, never a value.
+        expect(passwordFields).toBe(4); // login field + schema name + create field
         code = code.replaceAll('password', 'LOGIN_CREDENTIAL_FIELD');
       }
       if (file === 'auth.ts') {
@@ -840,6 +842,24 @@ describe('§25/§26 safety scan of the API source', () => {
         expect(scryptParses).toBe(3); // exactly N, r, p of the stored scrypt encoding
         code = code.replaceAll('Number.parseInt(', 'SCRYPT_PARAM_PARSE(');
         code = code.replaceAll('password', 'CREDENTIAL_FIELD');
+      }
+      if (file === 'authz.ts') {
+        // P8-A S2 (inspected exception): the ONLY lowercase `password` in the
+        // authorization policy is the '/auth/password' ROUTE KEY of the §3 matrix —
+        // a path string, never a credential. Roles alone live here.
+        const passwordFields = code.split('password').length - 1;
+        expect(passwordFields).toBe(1); // the route key, nothing else
+        code = code.replaceAll('password', 'ROUTE_KEY');
+      }
+      if (file === 'user-management.ts') {
+        // P8-A S2 (inspected exceptions — this module IS the org_admin user-management
+        // boundary, CG-GOV §2.3): the lowercase `password` occurrences are exactly the
+        // createUser input field, its validation/hash calls and one error message; the
+        // PublicUser Omit<> keeps the hash out of every response. No credential VALUE
+        // is ever returned or logged (the same discipline as auth.ts).
+        const passwordFields = code.split('password').length - 1;
+        expect(passwordFields).toBe(6); // boundary vocabulary only (inspected above)
+        code = code.replaceAll('password', 'ACCOUNT_CREDENTIAL_FIELD');
       }
       if (file === 'server.ts') {
         // P8-A S1 (inspected exception): the four /auth routes are wired HERE — the

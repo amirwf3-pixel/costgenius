@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import type { UserRole, UserStore } from '@costgenius/projects';
 import {
   DrizzleEstimateRepository,
   DrizzleFinalizedEstimateRepository,
@@ -13,6 +15,7 @@ import {
 } from '@costgenius/db';
 import { createApiServer, ensureBootstrapAdmin, type ApiDependencies } from '../src/index.js';
 import { loadPublishedDataset } from '../src/dataset.js';
+import { hashPassword } from '../src/auth.js';
 
 /**
  * Builds the API server wired to a REAL in-process PostgreSQL (PGlite — the same engine
@@ -107,6 +110,97 @@ export async function buildAuthenticatedTestServer(): Promise<AuthenticatedTestS
     { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
   );
   return attachAuthenticatedServer(createApiServer(deps));
+}
+
+/**
+ * P8-A S2 role fixtures: deterministic TEST credentials for one real DB-backed user
+ * per NON-admin role (CG-GOV §2.1). Created through the REAL persistence path
+ * (scrypt hash + UserStore.save — the same thing POST /users does); tests then log
+ * in through the REAL /auth/login so every probe rides a genuine session cookie.
+ * Development/test ONLY — never production credentials.
+ */
+export const TEST_ROLE_USERS = {
+  estimator: { username: 'est-user', password: 'estimator-password-123', role: 'estimator' },
+  reviewer: { username: 'rev-user', password: 'reviewer-password-123', role: 'reviewer' },
+  viewer: { username: 'view-user', password: 'viewer-password-123', role: 'viewer' },
+  data_steward: {
+    username: 'steward-user',
+    password: 'steward-password-123',
+    role: 'data_steward',
+  },
+} as const;
+
+export type TestRole = keyof typeof TEST_ROLE_USERS;
+
+/** Creates the role users if absent (idempotent — safe on a shared fixture server). */
+export async function ensureTestRoleUsers(users: UserStore): Promise<void> {
+  for (const spec of Object.values(TEST_ROLE_USERS)) {
+    if ((await users.findByUsername(spec.username)) === undefined) {
+      await users.save({
+        userId: randomUUID(),
+        username: spec.username,
+        passwordHash: await hashPassword(spec.password),
+        role: spec.role,
+        isActive: true,
+        createdAt: FIXED_INSTANT,
+      });
+    }
+  }
+}
+
+/** A REAL login through POST /auth/login → the cg_session cookie value. */
+export async function loginCookie(
+  app: ReturnType<typeof createApiServer>,
+  username: string,
+  password: string,
+): Promise<string> {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { username, password },
+  });
+  if (login.statusCode !== 200) {
+    throw new Error(`login failed for "${username}": ${String(login.statusCode)}`);
+  }
+  const setCookie = login.headers['set-cookie'];
+  const first = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+  const cookie = first === undefined ? undefined : first.split(';')[0];
+  if (cookie === undefined) throw new Error(`login for "${username}" returned no cookie`);
+  return cookie;
+}
+
+export interface RoleAwareServer {
+  readonly app: ReturnType<typeof createApiServer>;
+  /** raw inject with NO cookie (the anonymous probes). */
+  readonly rawInject: ReturnType<typeof createApiServer>['inject'];
+  /** A REAL session cookie for the role (org_admin = the bootstrap admin). Cached. */
+  readonly cookieFor: (role: UserRole) => Promise<string>;
+}
+
+/**
+ * The P8-A S2 fixture: bootstrapped org_admin + one real user per non-admin role,
+ * every cookie obtained through a REAL login. Nothing is mocked at the route layer.
+ */
+export async function buildRoleAwareServer(): Promise<RoleAwareServer> {
+  const { deps } = await buildPgliteDependencies();
+  await ensureBootstrapAdmin(
+    { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
+    { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
+  );
+  await ensureTestRoleUsers(deps.governance.users);
+  const app = createApiServer(deps);
+  const cache = new Map<string, string>();
+  const cookieFor = async (role: UserRole): Promise<string> => {
+    const cached = cache.get(role);
+    if (cached !== undefined) return cached;
+    const cookie =
+      role === 'org_admin'
+        ? await loginCookie(app, TEST_ADMIN.username, TEST_ADMIN.password)
+        : await loginCookie(app, TEST_ROLE_USERS[role].username, TEST_ROLE_USERS[role].password);
+    cache.set(role, cookie);
+    return cookie;
+  };
+  return { app, rawInject: app.inject.bind(app), cookieFor };
 }
 
 /** Wraps an already-bootstrapped server: real login + cookie-attached inject. */

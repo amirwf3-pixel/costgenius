@@ -349,7 +349,7 @@ documentNumber)` ordering; no filtering/pagination in V1; project isolation mand
 > implementation follows the closed contracts with no deviation; the API route count is
 > 28 and the D-015 golden total remains 69,011,321.1668.
 
-## D-018 · Phase 8 (P8-A) Governance & Trust — contract closure (Accepted — S0+S1 implemented; S2–S4 not started)
+## D-018 · Phase 8 (P8-A) Governance & Trust — contract closure (Accepted — S0+S1+S2 implemented; S3/S4 not started)
 
 - **Date**: 2026-09-28 · **Status**: Accepted — the three owner decisions of the
   Phase-8 decision gate are final and authoritative. This is a **contract-closure**
@@ -410,7 +410,8 @@ documentNumber)` ordering; no filtering/pagination in V1; project isolation mand
   ("single-user V1"); the API currently binds 0.0.0.0 with no authentication.
 
 > **Current status — S0 contract closure COMPLETE; S1 authentication COMPLETE
-> (2026-09-28, under the owner's S1 execution order); S2/S3/S4 NOT STARTED.**
+> (2026-09-28, under the owner's S1 execution order); S2 RBAC enforcement COMPLETE
+> (2026-09-28, under the owner's S2 execution order); S3/S4 NOT STARTED.**
 > S1 delivered exactly the §1 contract: the `0002_p8_governance` migration (9→12
 > tables; `users`/`sessions`/`audit_events`), the scrypt password records
 > (`scrypt$16384$8$1$salt$hash`, constant-time verify), 256-bit session tokens stored
@@ -426,9 +427,27 @@ AUTH_INVALID_CREDENTIALS` (no enumeration) and `401 UNAUTHENTICATED` error codes
 > `/auth/logout`, `/auth/session`, `/auth/password`); no new auth dependency, no CORS,
 > no JWT, and every preserved contract (calculations, takeoff, previews, transfer,
 > reporting, pricebook, lifecycle, immutable snapshots) is verified unchanged by the
-> full unit/browser-E2E/production-smoke matrices. S2 (RBAC enforcement), S3 (the audit
-> writer) and S4 (reviewer sign-off) remain NOT STARTED and require a separate owner
-> execution order.
+> full unit/browser-E2E/production-smoke matrices.
+>
+> **S2 (2026-09-28, the owner's S2 execution order) delivered exactly the §2/§3
+> contract**: the centralized route-policy table (`apps/api/src/authz.ts` — the §3
+> matrix as code, cross-checked by a test), the role lattice (org_admin ⊇
+> estimator/reviewer/viewer/data_steward; estimator/reviewer/data_steward ⊇ viewer),
+> the four user-management routes (POST /users, GET /users, POST /users/:userId/role,
+> POST /users/:userId/deactivate — org_admin only; the API route count is now **36**),
+> `403 FORBIDDEN` with the §2.2 `details.requiredRole` (authorization decided before
+> any handler logic; authentication failures stay 401), the §2.3 guard rails
+> (self-deactivation 403, last-active-org_admin demotion/deactivation 409, soft
+> deactivation revoking every session), and the real-role test infrastructure (one
+> real DB-backed user per role with real session cookies; a 37-test route × role
+> matrix covering all 34 protected routes against all five roles + anonymous with
+> zero-side-effect proofs; per-role browser E2E through the real login UI;
+> production-smoke and real-PostgreSQL denials). No new migration (the users/sessions
+> schema of `0002_p8_governance` suffices), no permissions tables, no role checks in
+> the engines, and no 403 anywhere in the S1 auth surface.
+>
+> S3 (the audit writer) and S4 (reviewer sign-off, incl. the #37/#38 approve routes)
+> remain NOT STARTED and require a separate owner execution order.
 
 ## Open decisions
 

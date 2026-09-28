@@ -9,6 +9,9 @@
  *   startup (config validation + migrations) → /health
  *   → P8-A S1 authentication gate (401 when anonymous; login; DB-backed session
  *     that survives a restart; logout deletes the session row)
+ *   → P8-A S2 RBAC: the bootstrap admin IS org_admin; a viewer-role account gets
+ *     200 on reads/exports and 403 FORBIDDEN on mutations (with zero side
+ *     effects); the §2.3 guard rails (self-deactivation, last-org_admin) hold
  *   → create project → estimate → version → real 1404 lines
  *   → calculate (golden chain) → finalize → reload (snapshot equality)
  *   → render Excel (PK bytes, deterministic) → render PDF (%PDF, deterministic)
@@ -47,6 +50,9 @@ const BASE = `http://127.0.0.1:${String(PORT)}`;
 /** Deterministic TEST-ONLY bootstrap credentials for this smoke (never production). */
 const BOOTSTRAP_USERNAME = 'smoke-admin';
 const BOOTSTRAP_PASSWORD = 'smoke-bootstrap-password-123';
+/** Deterministic TEST-ONLY lower-role account for the P8-A S2 denial proofs. */
+const VIEWER_USERNAME = 'smoke-viewer';
+const VIEWER_PASSWORD = 'smoke-viewer-password-123';
 /** The cg_session cookie value of the smoke's logged-in admin (set by loginOnce). */
 let authCookie: string | undefined;
 const PG_PORT = 54329;
@@ -875,10 +881,112 @@ async function main(): Promise<void> {
     );
     await loginOnce();
     const currentSession = await call('GET', '/auth/session');
+    const sessionData = currentSession.data as {
+      username?: string;
+      role?: string;
+      userId?: string;
+    };
     check(
       'login issues a cg_session cookie (HttpOnly, SameSite=Strict) and /auth/session answers the current user',
-      currentSession.status === 200 &&
-        (currentSession.data as { username?: string }).username === BOOTSTRAP_USERNAME,
+      currentSession.status === 200 && sessionData.username === BOOTSTRAP_USERNAME,
+    );
+    check(
+      'the bootstrap admin IS org_admin (P8-A S2, CG-GOV §1.5)',
+      sessionData.role === 'org_admin',
+      `role=${String(sessionData.role)}`,
+    );
+
+    // P8-A S2 — the §2.3 guard rails on the production path
+    const selfDeactivate = await call(
+      'POST',
+      `/users/${String(sessionData.userId)}/deactivate`,
+      {},
+    );
+    check(
+      'self-deactivation → 403 FORBIDDEN (guard rail)',
+      selfDeactivate.status === 403 &&
+        (selfDeactivate.data as { error?: { code?: string } }).error?.code === 'FORBIDDEN',
+    );
+    const selfDemote = await call('POST', `/users/${String(sessionData.userId)}/role`, {
+      role: 'viewer',
+    });
+    check(
+      'demoting the LAST active org_admin → 409 CANNOT_DEACTIVATE_LAST_ORG_ADMIN',
+      selfDemote.status === 409 &&
+        (selfDemote.data as { error?: { code?: string } }).error?.code ===
+          'CANNOT_DEACTIVATE_LAST_ORG_ADMIN',
+    );
+
+    // P8-A S2 — a real lower-role account through the REAL user-management route
+    const viewerCreated = await call('POST', '/users', {
+      username: VIEWER_USERNAME,
+      password: VIEWER_PASSWORD,
+      role: 'viewer',
+    });
+    check(
+      'org_admin creates a viewer account (201, no password material in the body)',
+      viewerCreated.status === 201 &&
+        !JSON.stringify(viewerCreated.data).toLowerCase().includes('password'),
+    );
+    const viewerDuplicate = await call('POST', '/users', {
+      username: VIEWER_USERNAME,
+      password: VIEWER_PASSWORD,
+      role: 'viewer',
+    });
+    check(
+      'duplicate username → 409 USERNAME_ALREADY_TAKEN',
+      viewerDuplicate.status === 409 &&
+        (viewerDuplicate.data as { error?: { code?: string } }).error?.code ===
+          'USERNAME_ALREADY_TAKEN',
+    );
+
+    // the viewer logs in through the REAL session mechanism
+    const viewerLogin = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: VIEWER_USERNAME, password: VIEWER_PASSWORD }),
+    });
+    const viewerSetCookie = viewerLogin.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith('cg_session='));
+    const viewerCookie = viewerSetCookie === undefined ? undefined : viewerSetCookie.split(';')[0];
+    check('the viewer account really logs in (cg_session issued)', viewerLogin.status === 200);
+    /** Raw fetch carrying the VIEWER's session (not the admin's). */
+    const viewerFetch = (path: string, init?: RequestInit): Promise<Response> =>
+      fetch(BASE + path, {
+        ...init,
+        headers: {
+          ...(init?.headers as Record<string, string> | undefined),
+          ...(viewerCookie === undefined ? {} : { cookie: viewerCookie }),
+        },
+      });
+    const authedViewer = await viewerFetch('/projects');
+    const projectsBeforeCount = ((await authedViewer.json()) as unknown[]).length;
+    check(
+      'viewer-class READ is allowed (GET /projects → 200)',
+      authedViewer.status === 200,
+      `status ${String(authedViewer.status)}`,
+    );
+    const viewerMutation = await viewerFetch('/projects', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: crypto.randomUUID(), title: 'ممنوع' }),
+    });
+    const viewerMutationBody = (await viewerMutation.json()) as {
+      error?: { code?: string; details?: { requiredRole?: string } };
+    };
+    check(
+      'viewer-class MUTATION is denied (403 FORBIDDEN, requiredRole estimator)',
+      viewerMutation.status === 403 &&
+        viewerMutationBody.error?.code === 'FORBIDDEN' &&
+        viewerMutationBody.error.details?.requiredRole === 'estimator',
+    );
+    const projectsAfter = await viewerFetch('/projects');
+    const projectsAfterCount = ((await projectsAfter.json()) as unknown[]).length;
+    check(
+      'the denied mutation had ZERO side effects (project count unchanged)',
+      projectsBeforeCount === projectsAfterCount,
+      `${String(projectsBeforeCount)} → ${String(projectsAfterCount)}`,
     );
 
     const first = await runWorkflow();
@@ -895,8 +1003,8 @@ async function main(): Promise<void> {
     );
     const liveSession = sessionRow.rows[0];
     check(
-      'exactly one user and one live session after the authenticated workflow',
-      liveSession !== undefined && liveSession.users === '1' && liveSession.sessions === '1',
+      'two users (bootstrap admin + the viewer) and two live sessions after the workflow',
+      liveSession !== undefined && liveSession.users === '2' && liveSession.sessions === '2',
       JSON.stringify(liveSession ?? {}),
     );
 
@@ -932,8 +1040,8 @@ async function main(): Promise<void> {
     );
     const govAfter = governanceAfter.rows[0];
     check(
-      'bootstrap ignored on restart — still exactly ONE user, and the DB-backed session survived',
-      govAfter !== undefined && govAfter.users === '1' && govAfter.sessions === '1',
+      'bootstrap ignored on restart — still exactly TWO users, and BOTH DB-backed sessions survived',
+      govAfter !== undefined && govAfter.users === '2' && govAfter.sessions === '2',
       JSON.stringify(govAfter ?? {}),
     );
     const sessionAfterRestart = await call('GET', '/auth/session');
@@ -968,6 +1076,31 @@ async function main(): Promise<void> {
     ).join('');
     check('Excel bytes identical across restart', excelHash === first.excelHash);
 
+    // P8-A S2 — the VIEWER's DB-backed session also survived the restart, with
+    // viewer-class rights intact: export allowed, mutation still denied
+    const viewerExcel = await fetch(`${BASE}/estimate-versions/${first.versionId}/render/excel`, {
+      headers: { cookie: viewerCookie ?? '' },
+    });
+    const viewerExcelHash = Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest('SHA-256', Buffer.from(await viewerExcel.arrayBuffer())),
+      ),
+      (b) => b.toString(16).padStart(2, '0'),
+    ).join('');
+    check(
+      'viewer exports the IDENTICAL Excel bytes after restart (Viewer+ renders)',
+      viewerExcel.status === 200 && viewerExcelHash === first.excelHash,
+    );
+    const viewerDeniedAfterRestart = await fetch(`${BASE}/projects`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: viewerCookie ?? '' },
+      body: JSON.stringify({ projectId: crypto.randomUUID(), title: 'ممنوع' }),
+    });
+    check(
+      'viewer is STILL denied mutations after restart (403 FORBIDDEN)',
+      viewerDeniedAfterRestart.status === 403,
+    );
+
     // P8-A S1 — logout revokes the session everywhere (row deleted, cookie cleared)
     const logout = await authFetch(`/auth/logout`, { method: 'POST' });
     const logoutClears = logout.headers
@@ -987,8 +1120,8 @@ async function main(): Promise<void> {
       'SELECT count(*) AS count FROM sessions',
     );
     check(
-      'logout deleted the session ROW (nothing left in the sessions table)',
-      sessionsAfterLogout.rows[0]?.count === '0',
+      "logout deleted the ADMIN session row (the viewer's session remains — logout is per-session)",
+      sessionsAfterLogout.rows[0]?.count === '1',
     );
 
     api.kill('SIGTERM');

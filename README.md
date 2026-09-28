@@ -14,10 +14,12 @@ takeoff documents with sheets, dimensional/manual/reference/expression quantitie
 explicit rounding, a draft/archive/finalized lifecycle with immutable snapshots and
 follow-up revisions, transfer into BOQ estimate versions, and standard Takeoff
 PDF/Excel reports. Both are covered by a real-browser E2E suite (Chromium 153) plus a
-production-path smoke test on a real PostgreSQL 16.9 server. Phase 8 S1 adds the
-authentication layer (CG-GOV §1): local accounts with scrypt passwords, server-side
-12-hour sessions, login/logout/password-change, and a fail-closed first-boot bootstrap
-admin. Everything else in PROJECT_SCOPE.md (role enforcement, audit, sign-off, market
+production-path smoke test on a real PostgreSQL 16.9 server. Phase 8 adds the
+governance layer (CG-GOV §1–§3): S1 authentication (local accounts with scrypt
+passwords, server-side 12-hour sessions, login/logout/password-change, a fail-closed
+first-boot bootstrap admin) and S2 role-based access control (five global roles, a
+centralized route-policy matrix, org_admin user management, 401/403 handling).
+Everything else in PROJECT_SCOPE.md (audit trail, reviewer sign-off, market
 prices, AI, worker, …) remains an unimplemented boundary.
 
 ## Requirements

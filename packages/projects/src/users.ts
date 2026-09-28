@@ -8,21 +8,22 @@
  *
  * The pure calculation stack (calc-engine, domain, cost-calculation) never imports this
  * module: actors, roles and sessions stop at the application/persistence boundary
- * (CG-GOV §6). Phase 8 S1 implements authentication only — RBAC enforcement, audit
- * events and reviewer sign-off are later stages; `role` exists here because it is part
- * of the closed users contract, not because any authorization logic exists yet.
+ * (CG-GOV §6). Phase 8 S1 implemented authentication; S2 adds the user-management
+ * persistence surface (list/role/deactivate, CG-GOV §2.3) — authorization DECISIONS
+ * live at the API boundary (`apps/api/src/authz.ts`), never here. Audit events and
+ * reviewer sign-off are later stages (S3/S4).
  */
 
 /** The five roles of PROJECT_SCOPE §4 — exactly these, no others (CG-GOV §2.1). */
 export type UserRole = 'org_admin' | 'estimator' | 'reviewer' | 'viewer' | 'data_steward';
 
-export const USER_ROLES: readonly UserRole[] = [
+export const USER_ROLES = [
   'org_admin',
   'estimator',
   'reviewer',
   'viewer',
   'data_steward',
-];
+] as const satisfies readonly UserRole[];
 
 /**
  * A local account. `passwordHash` is the scrypt encoding of CG-GOV §1.2
@@ -60,6 +61,14 @@ export interface UserStore {
   readonly count: () => Promise<number>;
   readonly save: (user: User) => Promise<void>;
   readonly updatePasswordHash: (userId: string, passwordHash: string) => Promise<void>;
+  /** All users, deterministic order (P8-A S2 org_admin listing, CG-GOV §2.3). */
+  readonly list: () => Promise<User[]>;
+  /** Role management (P8-A S2, CG-GOV §2.3): sets exactly the role column. */
+  readonly updateRole: (userId: string, role: UserRole) => Promise<void>;
+  /** Soft deactivation (CG-GOV §2.3): flips `is_active`; the row is never deleted. */
+  readonly updateIsActive: (userId: string, isActive: boolean) => Promise<void>;
+  /** The last-active-admin guard reads this (CG-GOV §2.3: never lock the instance out). */
+  readonly countActiveByRole: (role: UserRole) => Promise<number>;
 }
 
 /** Persistence contract for `sessions` (implemented by `@costgenius/db`). */
@@ -70,6 +79,8 @@ export interface SessionStore {
   readonly deleteByTokenHash: (sessionTokenHash: string) => Promise<void>;
   /** Password change: revokes every session of the user EXCEPT `keepTokenHash`. */
   readonly deleteAllByUserExcept: (userId: string, keepTokenHash: string) => Promise<void>;
+  /** Deactivation (P8-A S2, CG-GOV §2.3): revokes EVERY session of the user. */
+  readonly deleteAllByUser: (userId: string) => Promise<void>;
   /** Lazy cleanup of expired rows on lookup (CG-GOV §1.3). */
   readonly deleteExpiredBefore: (instant: string) => Promise<void>;
 }

@@ -27,20 +27,20 @@ decision log.
 
 ## 2. Stack (as implemented)
 
-| Concern      | Choice                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| Language     | TypeScript (strict) end-to-end                                                                                                  |
-| Monorepo     | pnpm workspaces + Turborepo                                                                                                     |
-| Decimal math | `decimal.js` wrapped by `@costgenius/domain` (`Decimal`/`Money`/`Qty`, explicit `RoundingRule`)                                 |
-| Web UI       | React 18 + Vite SPA (`react-router-dom`), Persian RTL, Vazirmatn — static `dist/`, no SSR                                       |
-| API          | Fastify + Zod (`apps/api`); TypeScript executed directly via `tsx` (§7)                                                         |
-| Auth         | P8-A S1 (CG-GOV §1): local accounts, scrypt hashes (`node:crypto`), server-side sessions in PostgreSQL — no auth dependency     |
-| Database     | PostgreSQL 16 — Drizzle ORM, versioned SQL migrations, node-postgres pool                                                       |
-| Excel        | ExcelJS + JSZip (`reporting-excel`)                                                                                             |
-| PDF          | pdfkit + bidi-js + embedded Vazirmatn (`reporting-pdf`) — no headless browser                                                   |
-| Testing      | Vitest (all packages), Testing Library (web), Playwright + npm-distributed Chromium (E2E), embedded-postgres (production smoke) |
-| CI           | GitHub Actions: install → format → lint → typecheck → test → build (§8)                                                         |
-| Deployment   | same-origin static web + API process; no container artifact yet (documented limitation)                                         |
+| Concern      | Choice                                                                                                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language     | TypeScript (strict) end-to-end                                                                                                                     |
+| Monorepo     | pnpm workspaces + Turborepo                                                                                                                        |
+| Decimal math | `decimal.js` wrapped by `@costgenius/domain` (`Decimal`/`Money`/`Qty`, explicit `RoundingRule`)                                                    |
+| Web UI       | React 18 + Vite SPA (`react-router-dom`), Persian RTL, Vazirmatn — static `dist/`, no SSR                                                          |
+| API          | Fastify + Zod (`apps/api`); TypeScript executed directly via `tsx` (§7)                                                                            |
+| Auth         | P8-A S1+S2 (CG-GOV §1–§3): local accounts, scrypt hashes (`node:crypto`), server-side sessions, centralized RBAC route policy — no auth dependency |
+| Database     | PostgreSQL 16 — Drizzle ORM, versioned SQL migrations, node-postgres pool                                                                          |
+| Excel        | ExcelJS + JSZip (`reporting-excel`)                                                                                                                |
+| PDF          | pdfkit + bidi-js + embedded Vazirmatn (`reporting-pdf`) — no headless browser                                                                      |
+| Testing      | Vitest (all packages), Testing Library (web), Playwright + npm-distributed Chromium (E2E), embedded-postgres (production smoke)                    |
+| CI           | GitHub Actions: install → format → lint → typecheck → test → build (§8)                                                                            |
+| Deployment   | same-origin static web + API process; no container artifact yet (documented limitation)                                                            |
 
 ## 3. Repository structure and layering
 
@@ -151,9 +151,9 @@ official 1404 PDF (repo root, SHA-256 c49e3155…16fae0f)
   Regional-coefficient **values** are an external dependency (circular 94/69416 annex)
   and are never substituted — a missing Rᵢ keeps the result `EXTERNAL_DEPENDENCY`.
 
-## 6. API surface (32 routes — the complete list)
+## 6. API surface (36 routes — the complete list)
 
-13 GET + 19 POST; no PATCH/PUT/DELETE. Every error — domain, validation, transport and
+13 GET + 23 POST; no PATCH/PUT/DELETE. Every error — domain, validation, transport and
 unknown routes — answers the stable shape `{error:{code,message,details?}}`.
 
 **Authentication (P8-A S1)**: every route except `GET /health` and
@@ -163,6 +163,15 @@ unknown routes — answers the stable shape `{error:{code,message,details?}}`.
 AUTH_INVALID_CREDENTIALS` (identical for unknown usernames — no enumeration). Identity
 arrives as an authenticated user object at the HTTP/application boundary only; the
 engines and repositories stay actor-free (CG-GOV §6).
+
+**Authorization (P8-A S2)**: one central route-policy table (`apps/api/src/authz.ts`,
+the CG-GOV §3 matrix as code) decides, in the same gate and BEFORE any handler logic,
+whether the authenticated role satisfies the route's class — `403 FORBIDDEN` with
+`details.requiredRole` otherwise (never a 401; never a 404). Classes: user management
+= org_admin only; domain mutations and stateless previews = estimator+ (org_admin,
+estimator); reads, renders and exports = viewer+ (all five roles); the /auth surface =
+any authenticated role. A route missing from the policy table fails closed to
+org_admin. Role **checks exist only at this boundary** — the engines never see roles.
 
 | Route                                                                                                 | Purpose                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -208,7 +217,7 @@ engine's structured failures under `details.failures` — distinct codes, never 
   pool → exit 0.
 - **Web**: `pnpm build --force` emits `apps/web/dist` (static files); serve same-origin
   behind a reverse proxy forwarding `/api/*` (no CORS by design).
-- **Smoke**: `pnpm --filter @costgenius/api run smoke:production` (64 checks on a real
+- **Smoke**: `pnpm --filter @costgenius/api run smoke:production` (75 checks on a real
   PostgreSQL server).
 
 ## 8. CI
@@ -253,26 +262,27 @@ finalized-only (draft → 409) and never mutate the snapshot.
 
 ## 11. Testing strategy (as implemented)
 
-| Layer                                                                  | What runs                                                                                                                                                                                                                          |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| domain · calc-engine · cost-calculation · boq · pricebook · reporting* | Vitest unit + golden tests (exact decimals, statuses, provenance)                                                                                                                                                                  |
-| db                                                                     | repository tests over PGlite with the real migrations                                                                                                                                                                              |
-| api                                                                    | full HTTP chain over PGlite (fixed clock) incl. the 14-test S1 auth/session/bootstrap suite; env-gated node-postgres suites for the real-server legs (incl. a used-database rerun proving the 12-table children-first drop repair) |
-| web                                                                    | jsdom component tests (incl. the S1 login/session/logout/password-change UI) + a node-env integration test (real client → real login → real API → PGlite)                                                                          |
-| browser E2E                                                            | real Chromium (npm-distributed binary) driving the production build — 26 tests (incl. the gate → 401 → login → app → logout spec, authenticated via Playwright storageState from a REAL login)                                     |
-| production smoke                                                       | real PostgreSQL 16.9 + the real `src/main.ts` process — 64 checks (incl. the auth gate, uniform 401s, bootstrap, DB-backed session surviving restart, logout revocation, credential-free logs)                                     |
+| Layer                                                                  | What runs                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| domain · calc-engine · cost-calculation · boq · pricebook · reporting* | Vitest unit + golden tests (exact decimals, statuses, provenance)                                                                                                                                                                                                                                                                                                                                |
+| db                                                                     | repository tests over PGlite with the real migrations                                                                                                                                                                                                                                                                                                                                            |
+| api                                                                    | full HTTP chain over PGlite (fixed clock) incl. the 14-test S1 auth suite and the S2 suites (37-test route × role matrix over all 34 protected routes + 12 user-management/guard-rail tests, all with real DB-backed role users and real session cookies); env-gated node-postgres suites for the real-server legs (incl. a used-database rerun proving the 12-table children-first drop repair) |
+| web                                                                    | jsdom component tests (incl. the S1 login/session/logout/password-change UI) + a node-env integration test (real client → real login → real API → PGlite)                                                                                                                                                                                                                                        |
+| browser E2E                                                            | real Chromium (npm-distributed binary) driving the production build — 33 tests (incl. the S1 gate/logout spec, authenticated via Playwright storageState from a REAL login, and the S2 RBAC spec: per-role UI logins, allowed work, 403 denials UI + direct-API, no bypass)                                                                                                                      |
+| production smoke                                                       | real PostgreSQL 16.9 + the real `src/main.ts` process — 75 checks (incl. the auth gate, uniform 401s, bootstrap, DB-backed sessions surviving restart, logout revocation, credential-free logs, and the S2 denials: bootstrap admin is org_admin, viewer reads/exports OK, viewer mutations 403 with zero side effects, §2.3 guard rails)                                                        |
 
 Fixtures use the official 1404 rows (the golden estimate) — never invented prices.
 
 ## 12. Not implemented (boundaries only — no claim of existence)
 
 `apps/worker`; the scaffold packages `market-prices`, `audit`, `ai-assist`,
-`contracts`, `i18n`, `ui`; RBAC enforcement, the audit writer, reviewer sign-off,
-organizations and RLS (the Phase-8 **S2–S4** stages — the `role` column and the
-`audit_events` table exist from S1's migration but nothing enforces or writes them);
+`contracts`, `i18n`, `ui`; the audit writer and reviewer sign-off (the Phase-8
+**S3/S4** stages — `audit_events` exists from the S1 migration but has no writer; the
+#37/#38 approve routes of the §3 matrix are not registered), organizations and RLS;
 drawing management (unspecified); Excel live formulas; a Docker/container artifact;
 load testing; login rate limiting and CSRF tokens (deliberately deferred, CG-GOV
-§1.7/§1.8). Phase-8 **S1 authentication is implemented** (local accounts, server-side
-sessions, login/logout/session/password-change, bootstrap admin, 401 handling — see
+§1.7/§1.8). Phase-8 **S1 authentication and S2 RBAC are implemented** (local accounts,
+server-side sessions, login/logout/session/password-change, bootstrap admin, 401
+handling, the centralized route-policy matrix, user management, 403 handling — see
 `apps/api/spec/CG-GOV-SPEC@0.1.0.md`, DECISIONS.md D-018). See PROJECT_SCOPE.md
 for the full intended product.

@@ -1,8 +1,8 @@
 # @costgenius/api
 
 Minimal production API (Phase 15) over the estimate vertical slice, the D-016
-Full Takeoff resource family (Phase 3), and the P8-A S1 authentication layer
-(CG-GOV §1 — local accounts, server-side sessions):
+Full Takeoff resource family (Phase 3), and the P8-A S1+S2 governance layer
+(CG-GOV §1–§3 — local accounts, server-side sessions, role-based access control):
 
 ```
 HTTP → Fastify → Zod → @costgenius/projects (application layer)
@@ -16,9 +16,13 @@ HTTP → Fastify → Zod → @costgenius/projects (application layer)
 | ------ | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | /health                                                   | liveness (public — the only unauthenticated route besides /auth/login)                                                                               |
 | POST   | /auth/login                                               | issue the `cg_session` cookie (P8-A S1); wrong credentials → uniform `401 AUTH_INVALID_CREDENTIALS`                                                  |
-| POST   | /auth/logout                                              | revoke the session row and clear the cookie (204)                                                                                                    |
-| GET    | /auth/session                                             | the current user projection `{userId, username, role, expiresAt}`                                                                                    |
-| POST   | /auth/password                                            | change password (validates the current one; revokes every OTHER session)                                                                             |
+| POST   | /auth/logout                                              | revoke the session row and clear the cookie (204) — any authenticated role                                                                           |
+| GET    | /auth/session                                             | the current user projection `{userId, username, role, expiresAt}` — any authenticated role                                                           |
+| POST   | /auth/password                                            | change password (validates the current one; revokes every OTHER session) — self-service                                                              |
+| POST   | /users                                                    | create a user (P8-A S2, org_admin only); duplicate → `409 USERNAME_ALREADY_TAKEN`                                                                    |
+| GET    | /users                                                    | list every account, no hashes (org_admin only)                                                                                                       |
+| POST   | /users/:userId/role                                       | change a user's role (org_admin only); last-active-org_admin demotion → `409 CANNOT_DEACTIVATE_LAST_ORG_ADMIN`; unknown → `404 USER_NOT_FOUND`       |
+| POST   | /users/:userId/deactivate                                 | soft-deactivate + revoke every session (org_admin only); self → `403 FORBIDDEN`; last admin → `409`                                                  |
 | POST   | /projects                                                 | create project (201)                                                                                                                                 |
 | GET    | /projects                                                 | list projects                                                                                                                                        |
 | GET    | /projects/:projectId                                      | reload project                                                                                                                                       |
@@ -64,6 +68,19 @@ HTTP → Fastify → Zod → @costgenius/projects (application layer)
   appears in a response or a log line. Roles are NOT enforced yet (S2): the `role`
   value is carried on the session projection only. No CORS, no JWT, no new auth
   dependency — `node:crypto` only.
+- **Authorization (P8-A S2, CG-GOV §2/§3)**: one central route-policy table
+  (`src/authz.ts`) decides in the session gate, BEFORE any handler logic, whether the
+  authenticated role satisfies the route's class — otherwise `403 FORBIDDEN` with
+  `details:{requiredRole}` (authentication failures stay 401; authorization is never
+  a 404). The classes: user management = `org_admin`; domain mutations and the
+  stateless previews = estimator+ (`org_admin`, `estimator`); every read, render and
+  export = viewer+ (ALL five roles); the `/auth` surface = any authenticated role.
+  A route missing from the policy table fails closed to `org_admin`. The five roles
+  are exactly `org_admin, estimator, reviewer, viewer, data_steward` (global — one
+  role per user; no project scoping, no permissions tables); the lattice is
+  org_admin ⊇ estimator/reviewer/viewer/data_steward, and estimator/reviewer/
+  data_steward ⊇ viewer. The approve routes (#37/#38 of the §3 matrix) are S4 scope
+  and are not registered yet.
 - **Decimals are strings** (`"quantity": "12.5"`); JSON numbers are rejected with 400.
 - **No client prices**: line payloads are strict-schema — `basePrice`/`unitPrice`/
   `lineAmount` are rejected. Prices come only from the verified 1404 pricebook (S2/S3).

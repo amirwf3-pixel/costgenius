@@ -35,6 +35,30 @@ describe('createApiClient error mapping', () => {
     expect(apiError.userMessage).toContain('نسخه جدید');
   });
 
+  it('maps a 403 FORBIDDEN to the Persian authorization message, echoing no role (P8-A S2)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        jsonResponse(403, {
+          error: {
+            code: 'FORBIDDEN',
+            message: 'you do not have permission to perform this action',
+            details: { requiredRole: 'estimator' },
+          },
+        }),
+      ),
+    );
+    const api = createApiClient('/api');
+    const error = await api.createProject({ title: 'x', metadata: {} }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.status).toBe(403);
+    expect(apiError.code).toBe('FORBIDDEN');
+    expect(apiError.userMessage).toBe('شما مجوز انجام این عمل را ندارید.');
+    // the UI never echoes which role would have been needed
+    expect(apiError.userMessage).not.toMatch(/estimator|org_admin|reviewer|data_steward|viewer/);
+  });
+
   it('maps 400 INVALID_REQUEST with details preserved', async () => {
     vi.stubGlobal(
       'fetch',

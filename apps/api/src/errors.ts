@@ -31,6 +31,12 @@
  * - 401 AuthError (P8-A S1)   — UNAUTHENTICATED (missing/expired/invalid session) and
  *                               AUTH_INVALID_CREDENTIALS (uniform login failure, no
  *                               user enumeration; CG-GOV@0.1.0 §1.6/§8).
+ * - 403 (P8-A S2)             — FORBIDDEN: an authenticated role below the route's
+ *                               class (ForbiddenError, details.requiredRole per
+ *                               CG-GOV §2.2) or self-deactivation (UserManagementError
+ *                               §2.3). Authentication failures are NEVER 403.
+ * - 404/409 user mgmt (S2)    — USER_NOT_FOUND, USERNAME_ALREADY_TAKEN,
+ *                               CANNOT_DEACTIVATE_LAST_ORG_ADMIN (CG-GOV §2.3/§8).
  * - 422 binding/S4 failures   — BOQ_LINES_REJECTED (S2 codes in details),
  *                               ESTIMATE_INPUT_ERROR, VERSION_WITHOUT_BUILDING,
  *                               TAKEOFF_QUANTITIES_REJECTED (D-015: calc-engine S1
@@ -72,6 +78,13 @@ const PROJECTS_STATUS: Readonly<Record<string, number>> = {
   TAKEOFF_INVALID_TRANSITION: 409,
   EMPTY_DATASET: 500,
   INCONSISTENT_DATASET_EDITION: 500,
+};
+
+const USER_MANAGEMENT_STATUS: Readonly<Record<string, number>> = {
+  USERNAME_ALREADY_TAKEN: 409,
+  USER_NOT_FOUND: 404,
+  CANNOT_DEACTIVATE_LAST_ORG_ADMIN: 409,
+  FORBIDDEN: 403,
 };
 
 const DB_STATUS: Readonly<Record<string, number>> = {
@@ -120,6 +133,27 @@ export function mapError(error: unknown): ApiErrorMapping {
     // The P8-A S1 authentication error contract (CG-GOV §1.6/§8) — new codes only;
     // every existing code above and below is preserved verbatim.
     return { status: 401, body: { error: { code, message: errorMessage(error) } } };
+  }
+  if (name === 'ForbiddenError' && code === 'FORBIDDEN') {
+    // P8-A S2 (CG-GOV §2.2): authenticated but insufficient role — 403 with the
+    // contract's machine-readable required-role detail; the message stays generic.
+    const requiredRole = (error as { requiredRole?: unknown }).requiredRole;
+    return {
+      status: 403,
+      body: {
+        error: {
+          code: 'FORBIDDEN',
+          message: errorMessage(error),
+          ...(typeof requiredRole === 'string' ? { details: { requiredRole } } : {}),
+        },
+      },
+    };
+  }
+  if (name === 'UserManagementError' && code !== undefined) {
+    // P8-A S2 (CG-GOV §2.3/§8): the org_admin user-management codes — including the
+    // self-deactivation 403, which carries no role detail (it is not a role denial).
+    const status = USER_MANAGEMENT_STATUS[code] ?? 400;
+    return { status, body: { error: { code, message: errorMessage(error) } } };
   }
   if (name === 'ProjectsError' && code !== undefined) {
     const status = PROJECTS_STATUS[code] ?? 400;

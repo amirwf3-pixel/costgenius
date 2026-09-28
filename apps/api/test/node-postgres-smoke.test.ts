@@ -456,10 +456,53 @@ describe.skipIf(SMOKE_URL === undefined)('node-postgres → real PostgreSQL serv
         .getSetCookie()
         .find((cookie) => cookie.startsWith('cg_session='));
       expect(sessionCookie).toBeDefined();
+      const adminCookie = sessionCookie?.split(';')[0] ?? '';
+
+      // P8-A S2: the bootstrap admin is org_admin on the real server
+      const session = await fetch(`${base}/auth/session`, { headers: { cookie: adminCookie } });
+      expect(session.status).toBe(200);
+      expect(((await session.json()) as { role: string }).role).toBe('org_admin');
+
+      // P8-A S2: a real lower-role account, denied mutations over real TCP
+      const viewer = await fetch(`${base}/users`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminCookie },
+        body: JSON.stringify({
+          username: 'node-pg-viewer',
+          password: 'node-pg-viewer-password-123',
+          role: 'viewer',
+        }),
+      });
+      expect(viewer.status).toBe(201);
+      const viewerLogin = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          username: 'node-pg-viewer',
+          password: 'node-pg-viewer-password-123',
+        }),
+      });
+      expect(viewerLogin.status).toBe(200);
+      const viewerCookie =
+        viewerLogin.headers
+          .getSetCookie()
+          .find((cookie) => cookie.startsWith('cg_session='))
+          ?.split(';')[0] ?? '';
+      const viewerRead = await fetch(`${base}/projects`, { headers: { cookie: viewerCookie } });
+      expect(viewerRead.status).toBe(200);
+      const viewerDenied = await fetch(`${base}/projects`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: viewerCookie },
+        body: JSON.stringify({ projectId: crypto.randomUUID(), title: 'ممنوع' }),
+      });
+      expect(viewerDenied.status).toBe(403);
+      expect(((await viewerDenied.json()) as { error: { code: string } }).error.code).toBe(
+        'FORBIDDEN',
+      );
 
       // a database-backed route answers over real TCP with the stable error contract
       const missing = await fetch(`${base}/projects/00000000-0000-4000-8000-000000000000`, {
-        headers: { cookie: sessionCookie?.split(';')[0] ?? '' },
+        headers: { cookie: adminCookie },
       });
       expect(missing.status).toBe(404);
       expect(((await missing.json()) as { error: { code: string } }).error.code).toBe('NOT_FOUND');

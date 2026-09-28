@@ -15,6 +15,7 @@
  * calculateEstimateVersion (preview, not persisted) → finalizeEstimate (persisted
  * atomically) → renderEstimateExcel/renderEstimatePdf (from the reloaded snapshot).
  */
+import { ForbiddenError, requiredRoleFor, roleSatisfies, routeRequirement } from './authz.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type {
   EstimateRepository,
@@ -41,6 +42,7 @@ import {
   sessionTokenFromCookieHeader,
   type AuthDependencies,
 } from './auth.js';
+import { createUser, changeUserRole, deactivateUser, listUsers } from './user-management.js';
 import {
   addEstimateLines,
   archiveTakeoffDocument,
@@ -74,6 +76,7 @@ import {
   calculateSchema,
   createEstimateSchema,
   createProjectSchema,
+  createUserSchema,
   createTakeoffSchema,
   createVersionSchema,
   finalizeSchema,
@@ -94,6 +97,7 @@ import {
   type TakeoffQuantityRequest,
   type TakeoffSheetRequest,
 } from './schemas.js';
+import { roleChangeSchema, userIdParamSchema } from './schemas.js';
 
 /** The authenticated request context set by the auth middleware (P8-A S1). */
 export interface RequestContext {
@@ -278,12 +282,15 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     });
   });
 
-  // ---- Authentication (P8-A S1, CG-GOV-SPEC@0.1.0) ---------------------------------------
+  // ---- Authentication + authorization (P8-A S1/S2, CG-GOV-SPEC@0.1.0) --------------------
   //
-  // The session gate: every route below except the two public ones (GET /health,
-  // POST /auth/login) requires a valid server-side session. Unknown routes are skipped
-  // so the stable 404 contract is unchanged. RBAC is NOT enforced here — S1 is
-  // authentication only; any authenticated user may call any route until S2.
+  // The gate: every route below except the two public ones (GET /health,
+  // POST /auth/login) requires a valid server-side session (S1), and then the
+  // CENTRALIZED RBAC policy (S2, `authz.ts`) decides whether the authenticated
+  // user's role satisfies the route's class — BEFORE any handler/domain work
+  // (CG-GOV §6: fail fast, 401/403 without side effects). Unknown routes are
+  // skipped so the stable 404 contract is unchanged; a route key missing from
+  // the policy table fails closed to org_admin.
   const authDeps: AuthDependencies = {
     users: deps.governance.users,
     sessions: deps.governance.sessions,
@@ -312,6 +319,13 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
       return;
     }
     request.auth = { user: auth.user, session: auth.session, token };
+    // P8-A S2 (CG-GOV §2.2/§3): authorization — an authenticated user whose role is
+    // below the route's class gets 403 FORBIDDEN (never a 401); the thrown error is
+    // mapped by the canonical error handler with the §2.2 required-role detail.
+    const requirement = routeRequirement(routeKey);
+    if (!roleSatisfies(auth.user.role, requirement)) {
+      throw new ForbiddenError(requiredRoleFor(requirement));
+    }
   });
 
   const requireAuth = (request: FastifyRequest): RequestContext => {
@@ -352,6 +366,34 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     const body = passwordChangeSchema.parse(request.body);
     const user = await changePassword(authDeps, auth, body.currentPassword, body.newPassword);
     return { userId: user.userId, username: user.username, role: user.role };
+  });
+
+  // ---- User management (P8-A S2, CG-GOV §2.3 — org_admin only via the gate) --------------
+  // The route gate has already established the caller is org_admin; these handlers
+  // own the target-dependent guard rails (self-deactivation, last-active-admin).
+
+  app.post('/users', async (request, reply) => {
+    requireAuth(request);
+    const body = createUserSchema.parse(request.body);
+    const user = await createUser(authDeps, body);
+    return await reply.code(201).send(user);
+  });
+
+  app.get('/users', async () => {
+    return await listUsers(authDeps);
+  });
+
+  app.post('/users/:userId/role', async (request) => {
+    requireAuth(request); // org_admin established by the gate; no actor guard on role change
+    const userId = userIdParamSchema.parse((request.params as { userId: unknown }).userId);
+    const body = roleChangeSchema.parse(request.body);
+    return await changeUserRole(authDeps, userId, body.role);
+  });
+
+  app.post('/users/:userId/deactivate', async (request) => {
+    const auth = requireAuth(request);
+    const userId = userIdParamSchema.parse((request.params as { userId: unknown }).userId);
+    return await deactivateUser(authDeps, auth.user.userId, userId);
   });
 
   app.get('/health', () => ({ status: 'ok' }));

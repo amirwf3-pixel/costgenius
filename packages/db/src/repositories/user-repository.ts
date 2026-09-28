@@ -5,9 +5,9 @@
  * Plain, contract-faithful rows: no secrets are derived here (the scrypt/token logic
  * lives at the API boundary — `apps/api/src/auth.ts`), the stores only persist and
  * fetch. Sessions are the one governance family with delete paths (logout, password-
- * change revocation, lazy expiry cleanup); `users` rows are never deleted — the single
- * save is the bootstrap/creation write, and password changes update exactly the hash
- * column.
+ * change revocation, deactivation revocation, lazy expiry cleanup); `users` rows are
+ * never deleted — creation writes the whole row, and password/role/deactivation
+ * updates touch exactly their own columns (P8-A S2, CG-GOV §2.3).
  */
 import { and, eq, lt, ne, sql } from 'drizzle-orm';
 import {
@@ -99,6 +99,31 @@ export class DrizzleUserRepository implements UserStore {
   async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
     await this.#db.update(users).set({ passwordHash }).where(eq(users.userId, userId));
   }
+
+  /** P8-A S2 (CG-GOV §2.3): the org_admin listing — deterministic (createdAt, userId). */
+  async list(): Promise<User[]> {
+    const rows = await this.#db.select().from(users).orderBy(users.createdAt, users.userId);
+    return rows.map((row) => userFromRow(row));
+  }
+
+  async updateRole(userId: string, role: UserRole): Promise<void> {
+    await this.#db.update(users).set({ role }).where(eq(users.userId, userId));
+  }
+
+  async updateIsActive(userId: string, isActive: boolean): Promise<void> {
+    await this.#db.update(users).set({ isActive }).where(eq(users.userId, userId));
+  }
+
+  /** The last-active-org_admin guard (CG-GOV §2.3) — the instance never locks itself out. */
+  async countActiveByRole(role: UserRole): Promise<number> {
+    const row = (
+      await this.#db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(users)
+        .where(and(eq(users.role, role), eq(users.isActive, true)))
+    )[0];
+    return row?.n ?? 0;
+  }
 }
 
 export class DrizzleSessionRepository implements SessionStore {
@@ -132,6 +157,11 @@ export class DrizzleSessionRepository implements SessionStore {
     await this.#db
       .delete(sessions)
       .where(and(eq(sessions.userId, userId), ne(sessions.sessionTokenHash, keepTokenHash)));
+  }
+
+  /** P8-A S2: deactivation revokes EVERY session of the user (CG-GOV §2.3). */
+  async deleteAllByUser(userId: string): Promise<void> {
+    await this.#db.delete(sessions).where(eq(sessions.userId, userId));
   }
 
   async deleteExpiredBefore(instant: string): Promise<void> {

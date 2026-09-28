@@ -13,8 +13,9 @@
  *   the `:projectId` path parameter, whose UUID shape is checked here so a malformed id
  *   is a clean 400 instead of a database type error.
  */
-import type { ExpressionNode } from '@costgenius/projects';
+import { USER_ROLES, type ExpressionNode } from '@costgenius/projects';
 import { z } from 'zod';
+import { USERNAME_PATTERN } from './auth.js';
 
 export const createProjectSchema = z
   .object({
@@ -459,3 +460,29 @@ export const passwordChangeSchema = z
   })
   .strict();
 export type PasswordChangeRequest = z.infer<typeof passwordChangeSchema>;
+
+/*
+ * P8-A S2 user management (CG-GOV §2.3): the five-role enum, the §1.1 username rule
+ * and the §1.2 password rule are enforced HERE so a malformed payload is a clean 400
+ * INVALID_REQUEST (§8) — unlike login, this surface must validate its input.
+ */
+export const roleSchema = z.enum(USER_ROLES);
+export type RoleValue = z.infer<typeof roleSchema>;
+
+export const createUserSchema = z
+  .object({
+    username: z.string().regex(USERNAME_PATTERN, '3–64 chars of a-z 0-9 . _ -'),
+    password: z.string().min(8).max(128),
+    role: roleSchema,
+  })
+  .strict();
+export type CreateUserRequest = z.infer<typeof createUserSchema>;
+
+export const roleChangeSchema = z
+  .object({
+    role: roleSchema,
+  })
+  .strict();
+export type RoleChangeRequest = z.infer<typeof roleChangeSchema>;
+
+export const userIdParamSchema = z.string().uuid();

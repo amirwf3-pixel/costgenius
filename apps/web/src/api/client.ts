@@ -50,6 +50,10 @@ function mapUserMessage(code: string, status: number, serverMessage: string): st
       return 'نام کاربری یا گذرواژه نادرست است.';
     case 'UNAUTHENTICATED':
       return 'نشست شما معتبر نیست یا پایان یافته است؛ دوباره وارد شوید.';
+    case 'FORBIDDEN':
+      // P8-A S2 (CG-GOV §2.2): the server is authoritative — the UI never predicts
+      // roles; it only renders the denial. No role information is echoed.
+      return 'شما مجوز انجام این عمل را ندارید.';
     case 'BOQ_LINES_REJECTED':
       return 'یک یا چند ردیف به فهرست‌بها متصل نشد؛ جزئیات را در فهرست خطاها ببینید.';
     case 'TAKEOFF_QUANTITIES_REJECTED':

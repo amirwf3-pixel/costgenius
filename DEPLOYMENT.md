@@ -163,9 +163,13 @@ start` with `DATABASE_URL`, and serve `apps/web/dist` behind a proxy. Every piec
   that path is what the smoke test exercises natively.
 - Single-process API; horizontal scaling was not in scope and is untested.
 - The dataset path default assumes the bundled 1404 dataset; `DATASET_PATH` overrides it.
-- Authentication is Phase-8 **S1 only** (CG-GOV §1): local accounts, server-side
-  12-hour sessions, password change. Role **enforcement** (RBAC), the audit writer,
-  and reviewer sign-off (S2–S4) are contract-closed but **not implemented** — the
-  `role` column exists but no route checks it yet.
+- Authentication and role-based authorization are implemented (Phase-8 S1+S2,
+  CG-GOV §1–§3): local accounts, server-side 12-hour sessions, password change, five
+  global roles (`org_admin`, `estimator`, `reviewer`, `viewer`, `data_steward`) and a
+  centralized route-policy matrix; user management (create/list/role/deactivate) is
+  org_admin-only via the `/users` routes. The audit writer and reviewer sign-off
+  (S3/S4) are contract-closed but **not implemented**.
+- Managing users today means the `/users` API surface (no admin UI yet — deliberately
+  out of the S2 UI scope).
 - Login rate limiting and CSRF tokens are deliberately deferred (CG-GOV §1.7/§1.8);
   the API must not be exposed beyond a trusted same-origin proxy in the meantime.

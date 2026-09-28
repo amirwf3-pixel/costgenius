@@ -1,0 +1,814 @@
+{
+  "specId": "CG-IR-MEAS",
+  "specVersion": "0.2.0",
+  "notice": "SYNTHETIC mechanics cases for the 0.2.0 additions (V13, exact aggregation, rounding targets). Item codes SYN-* are fictitious. No Iranian rule, unit, price or coefficient is represented.",
+  "cases": [
+    {
+      "id": "IRM-101",
+      "title": "item-total rounds the exact sum once; line rounding never feeds aggregation",
+      "category": "aggregation",
+      "formula": "itemTotal = round2(1.005 + 1.005) = 2.01 (not round0-each = 2)",
+      "assumptions": ["R1: aggregation is always from exact line values"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "line",
+            "selector": { "itemCode": "SYN-1001" },
+            "scale": 0,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          },
+          {
+            "target": "item-total",
+            "selector": { "itemCode": "SYN-1001" },
+            "scale": 2,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "1.005",
+                  "width": "1"
+                }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1001",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "1.005",
+                  "width": "1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "1", "L2": "1" },
+        "itemTotals": [{ "itemCode": "SYN-1001", "unit": "m2", "qty": "2.01" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1001", "unit": "m2", "qty": "2.01" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-102",
+      "title": "line rounding is display-level only; the itemTotal stays exact",
+      "category": "rounding",
+      "formula": "lines round to 2 each; itemTotal = 1.6 + 1.6 = 3.2 (not 4)",
+      "assumptions": ["R1: rounded line values are never aggregation inputs"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "line",
+            "selector": { "itemCode": "SYN-1002" },
+            "scale": 0,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1002",
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "1.6" }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1002",
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "1.6" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "2", "L2": "2" },
+        "itemTotals": [{ "itemCode": "SYN-1002", "unit": "m", "qty": "3.2" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1002", "unit": "m", "qty": "3.2" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-103",
+      "title": "same itemCode with incompatible units is a deterministic error (V13)",
+      "category": "validation",
+      "formula": "SYN-1003 in m2 and m3 → AGGREGATION_UNIT_MISMATCH",
+      "assumptions": ["no unit conversion exists; coded groups are never split"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1003",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": { "type": "dimensional", "profile": "LW", "length": "1", "width": "1" }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1003",
+                "kind": "addition",
+                "unit": "m3",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LWH",
+                  "length": "1",
+                  "width": "1",
+                  "height": "1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [{ "code": "AGGREGATION_UNIT_MISMATCH", "lineId": "L1" }]
+      }
+    },
+    {
+      "id": "IRM-104",
+      "title": "uncoded lines aggregate per unit under null, never across units",
+      "category": "aggregation",
+      "formula": "(null, m) = 5 + 2 = 7; (null, m2) = 3 — two entries, no error",
+      "assumptions": ["V13 note: uncoded lines never merge across units"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "5" }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": { "type": "dimensional", "profile": "LW", "length": "1", "width": "3" }
+              },
+              {
+                "lineId": "L3",
+                "rowNo": 3,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "2" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "5", "L2": "3", "L3": "2" },
+        "itemTotals": [
+          { "itemCode": null, "unit": "m", "qty": "7" },
+          { "itemCode": null, "unit": "m2", "qty": "3" }
+        ],
+        "sheetTotals": [
+          {
+            "sheetId": "S1",
+            "byItem": [
+              { "itemCode": null, "unit": "m", "qty": "7" },
+              { "itemCode": null, "unit": "m2", "qty": "3" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "IRM-105",
+      "title": "sheet-total rounds each (sheet, itemCode) exact subtotal once",
+      "category": "rounding",
+      "formula": "S1: 2.5 + 2.5 = 5; S2: 2.5 → round0 → 3; document itemTotal stays 7.5",
+      "assumptions": ["sheet-total never leaks into the document itemTotal"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "sheet-total",
+            "selector": { "itemCode": "SYN-1005" },
+            "scale": 0,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1005",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "2",
+                  "width": "1.25"
+                }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1005",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "2",
+                  "width": "1.25"
+                }
+              }
+            ]
+          },
+          {
+            "sheetId": "S2",
+            "lines": [
+              {
+                "lineId": "L3",
+                "rowNo": 1,
+                "itemCode": "SYN-1005",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "1.25",
+                  "width": "2"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "2.5", "L2": "2.5", "L3": "2.5" },
+        "itemTotals": [{ "itemCode": "SYN-1005", "unit": "m2", "qty": "7.5" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1005", "unit": "m2", "qty": "5" }] },
+          { "sheetId": "S2", "byItem": [{ "itemCode": "SYN-1005", "unit": "m2", "qty": "3" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-106",
+      "title": "references consume the referenced line's exact value, not its rounded value",
+      "category": "references",
+      "formula": "L1 = 2.6 (line-rounded to 3); L2 = ref(L1) = 2.6; itemTotal = 5.2 (not 6)",
+      "assumptions": [
+        "§6: references consume exact values unless a reference-term rule rounds them"
+      ],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "line",
+            "selector": { "lineIds": ["L1"] },
+            "scale": 0,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1006",
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "2.6" }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1006",
+                "kind": "addition",
+                "unit": "m",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [{ "lineId": "L1", "factor": "1", "use": "signed" }]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "3", "L2": "2.6" },
+        "itemTotals": [{ "itemCode": "SYN-1006", "unit": "m", "qty": "5.2" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1006", "unit": "m", "qty": "5.2" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-107",
+      "title": "narrowest item-total selector wins (itemCode beats unit)",
+      "category": "rounding",
+      "formula": "rules {unit: m2, scale 1} and {itemCode: SYN-1007, scale 0}; 1.15 → 1",
+      "assumptions": ["selector specificity: lineIds 4 > itemCode 2 > unit 1"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "item-total",
+            "selector": { "unit": "m2" },
+            "scale": 1,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          },
+          {
+            "target": "item-total",
+            "selector": { "itemCode": "SYN-1007" },
+            "scale": 0,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1007",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LW",
+                  "length": "1.15",
+                  "width": "1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "1.15" },
+        "itemTotals": [{ "itemCode": "SYN-1007", "unit": "m2", "qty": "1" }]
+      }
+    },
+    {
+      "id": "IRM-108",
+      "title": "per-itemCode exact net below zero is rejected (V11)",
+      "category": "validation",
+      "formula": "8 − 27 = −19 < 0 → NEGATIVE_NET_QUANTITY",
+      "assumptions": ["V11 checks the exact net, before any rounding"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1008",
+                "kind": "addition",
+                "unit": "m3",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LWH",
+                  "length": "2",
+                  "width": "2",
+                  "height": "2"
+                }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1008",
+                "kind": "deduction",
+                "unit": "m3",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "LWH",
+                  "length": "3",
+                  "width": "3",
+                  "height": "3"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [{ "code": "NEGATIVE_NET_QUANTITY", "lineId": "L1" }]
+      }
+    },
+    {
+      "id": "IRM-109",
+      "title": "two equally specific rules for the same target are a tie error",
+      "category": "validation",
+      "formula": "two line rules selecting L1 → INVALID_ROUNDING_POLICY",
+      "assumptions": ["§6: narrowest match wins; ties are errors"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [
+          {
+            "target": "line",
+            "selector": { "lineIds": ["L1"] },
+            "scale": 1,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          },
+          {
+            "target": "line",
+            "selector": { "lineIds": ["L1"] },
+            "scale": 2,
+            "mode": "HALF_UP",
+            "sourceStatus": "design"
+          }
+        ],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "each",
+                "quantity": { "type": "dimensional", "profile": "count", "similarCount": "3" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [{ "code": "INVALID_ROUNDING_POLICY", "lineId": "L1" }]
+      }
+    },
+    {
+      "id": "IRM-110",
+      "title": "expression round node and magnitude reference",
+      "category": "expressions",
+      "formula": "L2 = round1(10 − |7.456|) = round1(2.544) = 2.5",
+      "assumptions": ["§4.3 inline round uses the domain {scale, mode} rule"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1010",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "manual",
+                  "value": "7.456",
+                  "justification": "field measurement"
+                }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1010",
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "expression",
+                  "node": {
+                    "op": "round",
+                    "arg": {
+                      "op": "sub",
+                      "args": [
+                        { "op": "const", "value": "10" },
+                        { "op": "ref", "lineId": "L1", "use": "magnitude" }
+                      ]
+                    },
+                    "rule": { "scale": 1, "mode": "HALF_UP" }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "7.456", "L2": "2.5" },
+        "itemTotals": [{ "itemCode": "SYN-1010", "unit": "m2", "qty": "9.956" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1010", "unit": "m2", "qty": "9.956" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-111",
+      "title": "forward cross-sheet references resolve (lineId is document-unique)",
+      "category": "references",
+      "formula": "L1 = 2 × L2 = 2 × 3.5 = 7 (L2 is declared later, on another sheet)",
+      "assumptions": ["declaration order and sheet membership are irrelevant to resolution"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [{ "lineId": "L2", "factor": "2", "use": "signed" }]
+                }
+              }
+            ]
+          },
+          {
+            "sheetId": "S2",
+            "lines": [
+              {
+                "lineId": "L2",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "3.5" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "7", "L2": "3.5" },
+        "itemTotals": [{ "itemCode": null, "unit": "m", "qty": "10.5" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": null, "unit": "m", "qty": "7" }] },
+          { "sheetId": "S2", "byItem": [{ "itemCode": null, "unit": "m", "qty": "3.5" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-112",
+      "title": "floorCount must be an integer ≥ 1 (zero is invalid)",
+      "category": "counts",
+      "formula": "floorCount 0 → NON_INTEGER_COUNT",
+      "assumptions": ["§2.1: both count factors are integers ≥ 1 when present"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "each",
+                "quantity": { "type": "dimensional", "profile": "count", "floorCount": "0" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": { "status": "error", "errors": [{ "code": "NON_INTEGER_COUNT", "lineId": "L1" }] }
+    },
+    {
+      "id": "IRM-113",
+      "title": "floorCount and similarCount are separate exact factors",
+      "category": "counts",
+      "formula": "L1 = 3 × 4 × 2.5 = 30; L2 = −1; itemTotal = 29",
+      "assumptions": ["the factors are never merged into one count"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": "SYN-1013",
+                "kind": "addition",
+                "unit": "m",
+                "quantity": {
+                  "type": "dimensional",
+                  "profile": "L",
+                  "floorCount": "3",
+                  "similarCount": "4",
+                  "length": "2.5"
+                }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": "SYN-1013",
+                "kind": "deduction",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "1" }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "lines": { "L1": "30", "L2": "-1" },
+        "itemTotals": [{ "itemCode": "SYN-1013", "unit": "m", "qty": "29" }],
+        "sheetTotals": [
+          { "sheetId": "S1", "byItem": [{ "itemCode": "SYN-1013", "unit": "m", "qty": "29" }] }
+        ]
+      }
+    },
+    {
+      "id": "IRM-114",
+      "title": "a reference must target a line with the same unit (V7)",
+      "category": "validation",
+      "formula": "L2 (m2) references L1 (m) → UNIT_MISMATCH",
+      "assumptions": ["§3: no implicit unit conversion"],
+      "source": {
+        "sourceStatus": "design",
+        "sourceDocument": null,
+        "edition": null,
+        "page": null,
+        "section": null
+      },
+      "input": {
+        "rounding": [],
+        "sheets": [
+          {
+            "sheetId": "S1",
+            "lines": [
+              {
+                "lineId": "L1",
+                "rowNo": 1,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m",
+                "quantity": { "type": "dimensional", "profile": "L", "length": "5" }
+              },
+              {
+                "lineId": "L2",
+                "rowNo": 2,
+                "itemCode": null,
+                "kind": "addition",
+                "unit": "m2",
+                "quantity": {
+                  "type": "reference",
+                  "terms": [{ "lineId": "L1", "factor": "1", "use": "signed" }]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": { "status": "error", "errors": [{ "code": "UNIT_MISMATCH", "lineId": "L2" }] }
+    }
+  ]
+}

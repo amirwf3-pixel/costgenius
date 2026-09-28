@@ -1,0 +1,29 @@
+{
+  "name": "@costgenius/reporting-pdf",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "source": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@costgenius/boq": "workspace:*",
+    "@costgenius/reporting": "workspace:*",
+    "bidi-js": "^1.0.3",
+    "pdfkit": "^0.20.2"
+  },
+  "devDependencies": {
+    "@costgenius/cost-calculation": "workspace:*",
+    "@costgenius/pricebook": "workspace:*",
+    "@types/pdfkit": "^0.17.6",
+    "pdfjs-dist": "^6.3.289"
+  }
+}

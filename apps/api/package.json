@@ -1,0 +1,37 @@
+{
+  "name": "@costgenius/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke:production": "node --conditions=source --import tsx scripts/production-smoke.ts",
+    "start": "node --conditions=source --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@costgenius/db": "workspace:*",
+    "@costgenius/pricebook": "workspace:*",
+    "@costgenius/projects": "workspace:*",
+    "fastify": "^5.0.0",
+    "tsx": "^4.23.15",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@costgenius/boq": "workspace:*",
+    "@electric-sql/pglite": "^0.2.17",
+    "@embedded-postgres/linux-x64": "16.9.0-beta.15",
+    "@types/pg": "^8.23.1",
+    "drizzle-orm": "^0.44.2",
+    "embedded-postgres": "16.9.0-beta.15",
+    "light-my-request": "^6.6.0",
+    "pg": "^8.23.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "source": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  }
+}

@@ -15,7 +15,10 @@ export type ProjectsErrorCode =
   | 'INVALID_LINE_UNIT'
   | 'INVALID_TAKEOFF_INPUT'
   | 'TAKEOFF_INVALID_TRANSITION'
-  | 'TAKEOFF_CALCULATION_FAILED';
+  | 'TAKEOFF_CALCULATION_FAILED'
+  // P8-A S4 (CG-GOV §5/§8) — reviewer sign-off, new codes only:
+  | 'SIGNOFF_SELF_APPROVAL_FORBIDDEN'
+  | 'SIGNOFF_ALREADY_GIVEN';
 
 export class ProjectsError extends Error {
   constructor(

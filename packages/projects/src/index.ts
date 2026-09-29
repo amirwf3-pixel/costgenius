@@ -127,6 +127,12 @@ export {
   type UserStore,
 } from './users.js';
 export {
+  ensureNotSelfApproval,
+  ensureNotYetApproved,
+  requireApprovalInstant,
+  type ApprovalRecord,
+} from './signoff.js';
+export {
   authLoginFailed,
   authLoginSucceeded,
   authPasswordChanged,

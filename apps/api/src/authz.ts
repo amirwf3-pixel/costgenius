@@ -11,10 +11,9 @@
  * — estimator/reviewer/data_steward are INCOMPARABLE; this is a set-membership check,
  * never a numeric rank.
  *
- * Sign-off routes (#37/#38 of the §3 matrix, Reviewer+) are S4 scope by the §11
- * staging ("S4 sign-off (columns, routes, four-eyes)") and are NOT registered in S2;
- * they are absent from this table on purpose. When S4 adds them, their entries join
- * this same table — nothing else changes.
+ * Sign-off routes (#37/#38 of the §3 matrix, Reviewer+) joined this table with the
+ * S4 sign-off stage — the two entries below are the ONLY S4 additions; every other
+ * policy is unchanged since S2.
  */
 import type { UserRole } from '@costgenius/projects';
 
@@ -79,6 +78,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoleRequirement>> = {
   // #15/#16 — renders/exports are reads: Viewer+ (CG-GOV §3 rationale)
   'GET /estimate-versions/:versionId/render/excel': 'viewer',
   'GET /estimate-versions/:versionId/render/pdf': 'viewer',
+  // #37 — estimate sign-off: Reviewer+ (CG-GOV §3/§5, S4)
+  'POST /estimate-versions/:versionId/approve': 'reviewer',
   // #17–#28 — the D-016 takeoff family
   'POST /projects/:projectId/takeoffs': 'estimator',
   'GET /projects/:projectId/takeoffs': 'viewer',
@@ -92,6 +93,8 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoleRequirement>> = {
   'POST /projects/:projectId/takeoffs/:documentId/transfer-to-boq': 'estimator',
   'GET /projects/:projectId/takeoffs/:documentId/render/excel': 'viewer',
   'GET /projects/:projectId/takeoffs/:documentId/render/pdf': 'viewer',
+  // #38 — takeoff sign-off: Reviewer+ (CG-GOV §3/§5, S4)
+  'POST /projects/:projectId/takeoffs/:documentId/approve': 'reviewer',
 };
 
 /** The policy of a request's route — missing keys fail closed to `org_admin`. */

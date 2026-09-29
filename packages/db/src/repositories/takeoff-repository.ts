@@ -15,7 +15,7 @@
  * `byDocumentId` reloads the bundle without reading mutable draft state (the document row
  * is only consistency-checked, never a content source — the snapshot is authoritative).
  */
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type {
   FinalizedTakeoff,
   FinalizedTakeoffRepository,
@@ -139,10 +139,29 @@ export class DrizzleFinalizedTakeoffRepository implements FinalizedTakeoffReposi
       takeoffId: row.takeoffId,
       documentNumber: row.documentNumber,
       finalizedAt: row.finalizedAt,
+      // S4 (CG-GOV §5): the sign-off state rides on the bundle (metadata only).
+      finalizedBy: row.finalizedBy ?? null,
+      approval:
+        row.approvedBy !== null && row.approvedAt !== null
+          ? { approvedBy: row.approvedBy, approvedAt: row.approvedAt }
+          : null,
       input,
       result: structuredClone(row.result),
     });
     return finalizedBundle;
+  }
+
+  async approve(documentId: string, approverUserId: string, approvedAt: string): Promise<boolean> {
+    // The single irreversible FINALIZED → APPROVED/LOCKED write, guarded atomically:
+    // a concurrent (or sequential) second approval matches zero rows → false.
+    const updated = await this.#db
+      .update(finalizedTakeoffs)
+      .set({ approvedBy: approverUserId, approvedAt })
+      .where(
+        and(eq(finalizedTakeoffs.documentId, documentId), isNull(finalizedTakeoffs.approvedBy)),
+      )
+      .returning({ documentId: finalizedTakeoffs.documentId });
+    return updated.length === 1;
   }
 }
 

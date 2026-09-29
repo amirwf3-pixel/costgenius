@@ -37,6 +37,10 @@
  *                               §2.3). Authentication failures are NEVER 403.
  * - 404/409 user mgmt (S2)    — USER_NOT_FOUND, USERNAME_ALREADY_TAKEN,
  *                               CANNOT_DEACTIVATE_LAST_ORG_ADMIN (CG-GOV §2.3/§8).
+ * - 403/409 sign-off (S4)     — SIGNOFF_SELF_APPROVAL_FORBIDDEN (four-eyes, CG-GOV
+ *                               §5) and SIGNOFF_ALREADY_GIVEN (re-approval); the
+ *                               non-finalized precondition keeps its existing code
+ *                               (VERSION_NOT_FINALIZED / TAKEOFF_INVALID_TRANSITION).
  * - 422 binding/S4 failures   — BOQ_LINES_REJECTED (S2 codes in details),
  *                               ESTIMATE_INPUT_ERROR, VERSION_WITHOUT_BUILDING,
  *                               TAKEOFF_QUANTITIES_REJECTED (D-015: calc-engine S1
@@ -76,6 +80,9 @@ const PROJECTS_STATUS: Readonly<Record<string, number>> = {
   VERSION_WITHOUT_BUILDING: 422,
   TAKEOFF_CALCULATION_FAILED: 422,
   TAKEOFF_INVALID_TRANSITION: 409,
+  // P8-A S4 (CG-GOV §5/§8): reviewer sign-off, new codes only
+  SIGNOFF_SELF_APPROVAL_FORBIDDEN: 403,
+  SIGNOFF_ALREADY_GIVEN: 409,
   EMPTY_DATASET: 500,
   INCONSISTENT_DATASET_EDITION: 500,
 };

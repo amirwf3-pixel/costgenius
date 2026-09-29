@@ -36,6 +36,7 @@ import {
 import { parseInstant, parseUnitCode } from '@costgenius/domain';
 import { buildReportModel, type ReportModel } from '@costgenius/reporting';
 import { ProjectsError } from './errors.js';
+import type { ApprovalRecord } from './signoff.js';
 
 /** The coefficient inputs S4 needs, exactly as the engine defines them (never defaulted here). */
 export interface EstimateCoefficientInputs {
@@ -67,6 +68,17 @@ export interface FinalizedEstimate {
   readonly calculation: EstimateCalculation;
   /** Caller-supplied finalization instant. */
   readonly finalizedAt: string;
+  /**
+   * P8-A S4 (CG-GOV §5): who finalized — the actor stamped at finalization. NULL on
+   * rows finalized before V1.1 (legacy; Reviewer+ may approve those).
+   */
+  readonly finalizedBy?: string | null;
+  /**
+   * P8-A S4 (CG-GOV §5): the approval record. Absent/NULL = not approved; set =
+   * APPROVED/LOCKED (irreversible in this phase). Never part of the calculation
+   * snapshot — approval leaves every frozen column byte-identical.
+   */
+  readonly approval?: ApprovalRecord | null;
 }
 
 export interface CalculateVersionOptions {
@@ -79,6 +91,12 @@ export interface CalculateVersionOptions {
 export interface FinalizeVersionOptions extends CalculateVersionOptions {
   /** Caller-supplied finalization instant (ISO string; validated). */
   readonly finalizedAt: string;
+  /**
+   * P8-A S4 (CG-GOV §5): the finalizing actor, stamped as `finalized_by`. Optional so
+   * pre-V1.1 callers and fixtures stay valid; the API always passes the authenticated
+   * user (the four-eyes rule of §5 depends on it).
+   */
+  readonly finalizedBy?: string | null;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -207,5 +225,8 @@ export function finalizeEstimate(
     versionId,
     calculation,
     finalizedAt: options.finalizedAt,
+    // S4 (CG-GOV §5): the finalizing actor + the (initially absent) approval state.
+    finalizedBy: options.finalizedBy ?? null,
+    approval: null,
   });
 }

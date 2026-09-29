@@ -167,14 +167,16 @@ describe.skipIf(SMOKE_URL === undefined)('node-postgres → real PostgreSQL serv
         )
       ).rows;
       // (P7-S3 extended the stale five-table view to the nine-table schema; P8-A S1
-      // extends it to twelve — sessions → users; audit_events → users AND → projects.)
+      // extends it to twelve — sessions → users; audit_events → users AND → projects.
+      // P8-A S4 adds the sign-off FKs on BOTH finalized tables — finalized_by and
+      // approved_by → users, migration 0003, CG-GOV §7 item 4.)
       expect(fkCounts).toEqual([
         { table_name: 'audit_events', n: 2 },
         { table_name: 'boq_lines', n: 1 },
         { table_name: 'estimate_versions', n: 1 },
         { table_name: 'estimates', n: 1 },
-        { table_name: 'finalized_estimates', n: 2 },
-        { table_name: 'finalized_takeoffs', n: 1 },
+        { table_name: 'finalized_estimates', n: 4 },
+        { table_name: 'finalized_takeoffs', n: 3 },
         { table_name: 'sessions', n: 1 },
         { table_name: 'takeoff_documents', n: 1 },
         { table_name: 'takeoff_lines', n: 1 },

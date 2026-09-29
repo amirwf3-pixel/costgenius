@@ -6,12 +6,13 @@
  * never updated or deleted; replacing it with different content is
  * FINALIZED_ESTIMATE_IMMUTABLE, not an overwrite.
  */
-import { jsonb, pgTable, text } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import type { BoqRollup } from '@costgenius/boq';
 import type { EstimateInput, EstimateResult } from '@costgenius/cost-calculation';
 import type { ReportModel } from '@costgenius/reporting';
 import { estimateVersions } from './estimate-versions.js';
 import { estimates } from './estimates.js';
+import { users } from './users.js';
 
 export const finalizedEstimates = pgTable('finalized_estimates', {
   versionId: text('version_id')
@@ -22,6 +23,18 @@ export const finalizedEstimates = pgTable('finalized_estimates', {
     .references(() => estimates.estimateId),
   /** Domain Instant, stored verbatim (never database-generated). */
   finalizedAt: text('finalized_at').notNull(),
+  /**
+   * P8-A S4 (CG-GOV §5): who finalized — the actor stamped at finalization. NULL on
+   * rows finalized before V1.1 (legacy; Reviewer+ may approve those, CG-GOV §5).
+   */
+  finalizedBy: uuid('finalized_by').references(() => users.userId),
+  /**
+   * P8-A S4 (CG-GOV §5): the approving user. NULL = not approved; `approved_by` +
+   * `approved_at` both set = APPROVED/LOCKED (irreversible in this phase).
+   */
+  approvedBy: uuid('approved_by').references(() => users.userId),
+  /** Domain Instant of the approval, stored verbatim (never database-generated). */
+  approvedAt: text('approved_at'),
   /** The exact S4 input that produced the result (full deterministic replay record). */
   s4Input: jsonb('s4_input').$type<EstimateInput>().notNull(),
   /** The S4 result, verbatim from the engine. */

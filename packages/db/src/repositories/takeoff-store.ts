@@ -389,6 +389,8 @@ export async function finalizeTakeoffInStore(
     takeoffId: finalized.takeoffId,
     documentNumber: finalized.documentNumber,
     finalizedAt: finalized.finalizedAt,
+    // S4 (CG-GOV §5): the finalizing actor; pre-V1.1 rows keep NULL (legacy).
+    finalizedBy: finalized.finalizedBy ?? null,
     specVersion: finalized.result.specVersion,
     engineVersion: finalized.result.engineVersion,
     input: structuredClone(finalized.input),

@@ -1,6 +1,6 @@
 {
-  "id": "43c1856c-9c19-4f1f-bb45-02354ec55ce4",
-  "prevId": "22d1d688-a736-4126-94b6-8d3dfcc386b6",
+  "id": "31c55511-e674-4e33-8551-b7888c3a90a5",
+  "prevId": "43c1856c-9c19-4f1f-bb45-02354ec55ce4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -70,8 +70,8 @@
             }
           ],
           "isUnique": false,
-          "method": "btree",
           "concurrently": false,
+          "method": "btree",
           "with": {}
         },
         "audit_events_resource_idx": {
@@ -91,8 +91,8 @@
             }
           ],
           "isUnique": false,
-          "method": "btree",
           "concurrently": false,
+          "method": "btree",
           "with": {}
         },
         "audit_events_actor_user_id_idx": {
@@ -106,8 +106,8 @@
             }
           ],
           "isUnique": false,
-          "method": "btree",
           "concurrently": false,
+          "method": "btree",
           "with": {}
         }
       },
@@ -447,6 +447,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "finalized_by": {
+          "name": "finalized_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "s4_input": {
           "name": "s4_input",
           "type": "jsonb",
@@ -491,6 +509,24 @@
           "columnsTo": ["estimate_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "finalized_estimates_finalized_by_users_user_id_fk": {
+          "name": "finalized_estimates_finalized_by_users_user_id_fk",
+          "tableFrom": "finalized_estimates",
+          "tableTo": "users",
+          "columnsFrom": ["finalized_by"],
+          "columnsTo": ["user_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finalized_estimates_approved_by_users_user_id_fk": {
+          "name": "finalized_estimates_approved_by_users_user_id_fk",
+          "tableFrom": "finalized_estimates",
+          "tableTo": "users",
+          "columnsFrom": ["approved_by"],
+          "columnsTo": ["user_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -527,6 +563,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "finalized_by": {
+          "name": "finalized_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "spec_version": {
           "name": "spec_version",
           "type": "text",
@@ -560,6 +614,24 @@
           "tableTo": "takeoff_documents",
           "columnsFrom": ["document_id"],
           "columnsTo": ["document_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finalized_takeoffs_finalized_by_users_user_id_fk": {
+          "name": "finalized_takeoffs_finalized_by_users_user_id_fk",
+          "tableFrom": "finalized_takeoffs",
+          "tableTo": "users",
+          "columnsFrom": ["finalized_by"],
+          "columnsTo": ["user_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "finalized_takeoffs_approved_by_users_user_id_fk": {
+          "name": "finalized_takeoffs_approved_by_users_user_id_fk",
+          "tableFrom": "finalized_takeoffs",
+          "tableTo": "users",
+          "columnsFrom": ["approved_by"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -654,8 +726,8 @@
             }
           ],
           "isUnique": false,
-          "method": "btree",
           "concurrently": false,
+          "method": "btree",
           "with": {}
         },
         "sessions_expires_at_idx": {
@@ -669,8 +741,8 @@
             }
           ],
           "isUnique": false,
-          "method": "btree",
           "concurrently": false,
+          "method": "btree",
           "with": {}
         }
       },
@@ -1067,8 +1139,8 @@
       "uniqueConstraints": {
         "users_username_key": {
           "name": "users_username_key",
-          "columns": ["username"],
-          "nullsNotDistinct": false
+          "nullsNotDistinct": false,
+          "columns": ["username"]
         }
       },
       "policies": {},

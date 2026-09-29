@@ -26,6 +26,7 @@ import {
 } from '@costgenius/calc-engine';
 import { parseInstant } from '@costgenius/domain';
 import { ProjectsError } from './errors.js';
+import type { ApprovalRecord } from './signoff.js';
 import type { Project } from './project.js';
 
 export type TakeoffDocumentStatus = 'draft' | 'archived' | 'finalized';
@@ -74,6 +75,17 @@ export interface FinalizedTakeoff {
   readonly documentNumber: number;
   /** Domain Instant. */
   readonly finalizedAt: string;
+  /**
+   * P8-A S4 (CG-GOV §5): who finalized — the actor stamped at finalization. NULL on
+   * rows finalized before V1.1 (legacy; Reviewer+ may approve those).
+   */
+  readonly finalizedBy?: string | null;
+  /**
+   * P8-A S4 (CG-GOV §5): the approval record. Absent/NULL = not approved; set =
+   * APPROVED/LOCKED (irreversible in this phase). Never part of the calculation
+   * snapshot — approval leaves every frozen column byte-identical.
+   */
+  readonly approval?: ApprovalRecord | null;
   /** The exact engine input that produced the result (deterministic replay record). */
   readonly input: TakeoffCalculationInput;
   /** The engine result, verbatim. */
@@ -229,6 +241,12 @@ export function unarchiveTakeoffDocument(document: TakeoffDocument): TakeoffDocu
 export interface FinalizeTakeoffOptions {
   /** Domain Instant (validated; this layer reads no clock). */
   readonly finalizedAt: string;
+  /**
+   * P8-A S4 (CG-GOV §5): the finalizing actor, stamped as `finalized_by`. Optional so
+   * pre-V1.1 callers and fixtures stay valid; the API always passes the authenticated
+   * user (the four-eyes rule of §5 depends on it).
+   */
+  readonly finalizedBy?: string | null;
 }
 
 /**
@@ -293,6 +311,9 @@ export function finalizeTakeoffDocument(
     takeoffId: document.takeoffId,
     documentNumber: document.documentNumber,
     finalizedAt,
+    // S4 (CG-GOV §5): the finalizing actor + the (initially absent) approval state.
+    finalizedBy: options.finalizedBy ?? null,
+    approval: null,
     input,
     result,
   });

@@ -21,6 +21,11 @@
  *     events for denied/failed mutations, history byte-identical across restart, and
  *     the RESTARTED API RUNNING AS A RESTRICTED non-owner role that can INSERT but
  *     never UPDATE/DELETE audit_events (the DEPLOYMENT.md runbook posture)
+ *   → S4: reviewer sign-off — a reviewer account approves the finalized estimate
+ *     version and (as a legacy NULL-finalizer row) the finalized takeoff; the
+ *     four-eyes/RBAC/non-finalized/already-approved denials write nothing; the frozen
+ *     snapshots and rendered bytes stay byte-identical; the approval state and its
+ *     events survive the restart
  *   → restart (migrations re-run idempotently; data persists)
  *   → schema assertions on the fresh database (exactly the TWELVE S1 tables — the
  *     nine domain tables plus users/sessions/audit_events — FKs, uniques, indexes,
@@ -88,6 +93,14 @@ async function waitForHealth(timeoutMs: number): Promise<boolean> {
       setTimeout(r, 300);
     });
   }
+}
+
+/** SHA-256 hex of a buffer (byte-determinism assertions). */
+async function sha256Of(buf: Buffer): Promise<string> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', buf)).reduce(
+    (acc, b) => acc + b.toString(16).padStart(2, '0'),
+    '',
+  );
 }
 
 /** Logs in through the REAL session mechanism and keeps the cookie for call/authFetch. */
@@ -273,6 +286,9 @@ async function runWorkflow(): Promise<{
   projectId: string;
   estimateId: string;
   versionId: string;
+  draftVersionId: string;
+  takeoffDocumentId: string;
+  followUpDocumentId: string;
   excelHash: string;
   pdfHash: string;
 }> {
@@ -558,12 +574,6 @@ async function runWorkflow(): Promise<{
     `status ${String(transferCalc.status)}`,
   );
 
-  const sha = async (buf: Buffer): Promise<string> =>
-    new Uint8Array(await crypto.subtle.digest('SHA-256', buf)).reduce(
-      (acc, b) => acc + b.toString(16).padStart(2, '0'),
-      '',
-    );
-
   const excelA = await authFetch(`/estimate-versions/${versionId}/render/excel`);
   const excelBytesA = Buffer.from(await excelA.arrayBuffer());
   const excelB = await authFetch(`/estimate-versions/${versionId}/render/excel`);
@@ -574,7 +584,7 @@ async function runWorkflow(): Promise<{
       excelBytesA.subarray(0, 2).toString('latin1') === 'PK' &&
       excelBytesA.equals(excelBytesB),
   );
-  const excelHashA = await sha(excelBytesA);
+  const excelHashA = await sha256Of(excelBytesA);
   const pdfA = await authFetch(`/estimate-versions/${versionId}/render/pdf`);
   const pdfBytesA = Buffer.from(await pdfA.arrayBuffer());
   const pdfB = await authFetch(`/estimate-versions/${versionId}/render/pdf`);
@@ -664,15 +674,19 @@ async function runWorkflow(): Promise<{
   const v1ExcelBytes = Buffer.from(await v1Excel.arrayBuffer());
   check(
     'v1 Excel bytes unchanged after v2 (append-only, finalized snapshot)',
-    v1Excel.status === 200 && (await sha(v1ExcelBytes)) === excelHashA,
+    v1Excel.status === 200 && (await sha256Of(v1ExcelBytes)) === excelHashA,
   );
 
   return {
     projectId,
     estimateId,
     versionId,
+    // the S4 sign-off probes reuse the workflow's own rows (no extra data)
+    draftVersionId: v2Id,
+    takeoffDocumentId: takeoffDocId,
+    followUpDocumentId: (takeoffFollowUp.data as { documentId: string }).documentId,
     excelHash: excelHashA,
-    pdfHash: await sha(pdfBytesA),
+    pdfHash: await sha256Of(pdfBytesA),
   };
 }
 
@@ -740,6 +754,29 @@ async function assertSchema(pool: Pool): Promise<void> {
   check(
     'finalized snapshots stored as JSONB (s4_input/s4_result/rollup/report_model)',
     jsonb.rows.length === 4 && jsonb.rows.every((r) => r.data_type === 'jsonb'),
+  );
+  // P8-A S4 (CG-GOV §7 item 4): the sign-off columns on BOTH finalized tables —
+  // finalized_by uuid, approved_by uuid, approved_at text, all nullable (legacy rows)
+  const signoffColumns = await pool.query<{
+    table_name: string;
+    column_name: string;
+    data_type: string;
+  }>(
+    "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('finalized_estimates','finalized_takeoffs') AND column_name IN ('finalized_by','approved_by','approved_at')",
+  );
+  check(
+    'S4 sign-off columns on both finalized tables (finalized_by/approved_by uuid, approved_at text)',
+    signoffColumns.rows.length === 6 &&
+      signoffColumns.rows
+        .filter((r) => r.column_name === 'approved_at')
+        .every((r) => r.data_type === 'text') &&
+      signoffColumns.rows
+        .filter((r) => r.column_name !== 'approved_at')
+        .every((r) => r.data_type === 'uuid') &&
+      new Set(signoffColumns.rows.map((r) => r.table_name)).size === 2,
+    JSON.stringify(
+      signoffColumns.rows.map((r) => `${r.table_name}.${r.column_name}:${r.data_type}`),
+    ),
   );
 }
 
@@ -1147,11 +1184,13 @@ async function main(): Promise<void> {
         JSON.stringify(passwordEvent.details) === '{}',
     );
 
-    // the pre-restart audit snapshot (count + one full row, byte-compared after restart)
+    // the pre-restart audit snapshot (count + one full row, byte-compared after
+    // restart). `let`: the S4 sign-off block below appends its approval events and
+    // re-captures the count, so the restart comparison covers those too.
     const auditBeforeRestart = await pool.query<{ count: string }>(
       'SELECT count(*) AS count FROM audit_events',
     );
-    const auditCountBefore = auditBeforeRestart.rows[0]?.count ?? '-1';
+    let auditCountBefore = auditBeforeRestart.rows[0]?.count ?? '-1';
     const finalizedEventId = finalizedEvent?.event_id ?? 'missing';
 
     check(
@@ -1171,6 +1210,233 @@ async function main(): Promise<void> {
       liveSession !== undefined && liveSession.users === '2' && liveSession.sessions === '2',
       JSON.stringify(liveSession ?? {}),
     );
+
+    // P8-A S4 (CG-GOV §5) — reviewer sign-off on the production path. The org_admin
+    // finalized every workflow resource, so the admin is the four-eyes counterpart:
+    // a REVIEWER (the second pair of eyes) performs the approvals. Everything below
+    // runs over real HTTP against the real PostgreSQL.
+    const reviewerCreated = await call('POST', '/users', {
+      username: 'smoke-reviewer',
+      password: 'smoke-reviewer-password-123',
+      role: 'reviewer',
+    });
+    check(
+      'S4: the org_admin creates a reviewer account (201)',
+      reviewerCreated.status === 201,
+      `status=${String(reviewerCreated.status)}`,
+    );
+    const reviewerUserId = (reviewerCreated.data as { userId?: string }).userId;
+    const reviewerLogin = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'smoke-reviewer',
+        password: 'smoke-reviewer-password-123',
+      }),
+    });
+    const reviewerSetCookie = reviewerLogin.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith('cg_session='));
+    const reviewerCookie =
+      reviewerSetCookie === undefined ? undefined : reviewerSetCookie.split(';')[0];
+    check(
+      'S4: the reviewer logs in through the real session mechanism',
+      reviewerLogin.status === 200 && reviewerCookie !== undefined,
+    );
+    /** POST as an arbitrary cookie-bearing identity (returns status + parsed body). */
+    const postAs = async (
+      cookie: string | undefined,
+      path: string,
+    ): Promise<{ status: number; data: unknown }> => {
+      const response = await fetch(BASE + path, {
+        method: 'POST',
+        headers: { cookie: cookie ?? '' },
+      });
+      const text = await response.text();
+      return { status: response.status, data: text.length > 0 ? JSON.parse(text) : {} };
+    };
+
+    // the zero-event denial baseline
+    const auditBeforeS4 = await pool.query<{ count: string }>(
+      'SELECT count(*) AS count FROM audit_events',
+    );
+    const auditCountBeforeS4 = auditBeforeS4.rows[0]?.count ?? '-1';
+    const approveEstimateUrl = `/estimate-versions/${first.versionId}/approve`;
+
+    // (a) anonymous → 401 (the gate, before any handler work)
+    const anonymousApprove = await postAs(undefined, approveEstimateUrl);
+    check(
+      'S4: anonymous approval is 401 UNAUTHENTICATED',
+      anonymousApprove.status === 401 &&
+        (anonymousApprove.data as { error?: { code?: string } }).error?.code === 'UNAUTHENTICATED',
+    );
+    // (b) viewer → 403 FORBIDDEN (RBAC: approval is Reviewer+)
+    const viewerApprove = await postAs(viewerCookie, approveEstimateUrl);
+    check(
+      'S4: the VIEWER cannot approve (403 FORBIDDEN, requiredRole reviewer)',
+      viewerApprove.status === 403 &&
+        (viewerApprove.data as { error?: { code?: string; details?: { requiredRole?: string } } })
+          .error?.code === 'FORBIDDEN' &&
+        (
+          (viewerApprove.data as { error?: { details?: { requiredRole?: string } } }).error
+            ?.details ?? {}
+        ).requiredRole === 'reviewer',
+    );
+    // (c) the admin finalized the workflow — self-approval is the four-eyes 403
+    const selfApprove = await postAs(authCookie, approveEstimateUrl);
+    check(
+      'S4: the FINALIZER cannot self-approve (403 SIGNOFF_SELF_APPROVAL_FORBIDDEN)',
+      selfApprove.status === 403 &&
+        (selfApprove.data as { error?: { code?: string } }).error?.code ===
+          'SIGNOFF_SELF_APPROVAL_FORBIDDEN',
+    );
+    // (d) the three denials wrote NOTHING — no event, no approval column
+    const auditAfterDenials = await pool.query<{ count: string }>(
+      'SELECT count(*) AS count FROM audit_events',
+    );
+    const unapprovedAfterDenials = await pool.query<{ approved_by: string | null }>(
+      'SELECT approved_by FROM finalized_estimates WHERE version_id = $1',
+      [first.versionId],
+    );
+    check(
+      'S4: every denied approval left ZERO events and NO approval column',
+      auditAfterDenials.rows[0]?.count === auditCountBeforeS4 &&
+        unapprovedAfterDenials.rows[0]?.approved_by === null,
+    );
+
+    // (e) the reviewer approves the finalized estimate version — snapshot/renders first
+    const estimateSnapshotBefore = await pool.query(
+      'SELECT s4_input, s4_result, rollup, report_model, finalized_at FROM finalized_estimates WHERE version_id = $1',
+      [first.versionId],
+    );
+    const estimateExcelBefore = await authFetch(
+      `/estimate-versions/${first.versionId}/render/excel`,
+    );
+    const estimatePdfBefore = await authFetch(`/estimate-versions/${first.versionId}/render/pdf`);
+    const reviewerApprove = await postAs(reviewerCookie, approveEstimateUrl);
+    const approvalBody = reviewerApprove.data as {
+      approvedBy?: { userId?: string; username?: string } | null;
+      approvedAt?: string | null;
+    };
+    check(
+      'S4: the reviewer approves the finalized estimate version (200, additive approval state)',
+      reviewerApprove.status === 200 &&
+        approvalBody.approvedBy?.userId === reviewerUserId &&
+        approvalBody.approvedBy?.username === 'smoke-reviewer' &&
+        typeof approvalBody.approvedAt === 'string',
+      `status=${String(reviewerApprove.status)} body=${JSON.stringify(reviewerApprove.data).slice(0, 160)}`,
+    );
+    // (f) the frozen snapshot columns are byte-identical; the renders too
+    const estimateSnapshotAfter = await pool.query(
+      'SELECT s4_input, s4_result, rollup, report_model, finalized_at FROM finalized_estimates WHERE version_id = $1',
+      [first.versionId],
+    );
+    const estimateExcelAfter = await authFetch(
+      `/estimate-versions/${first.versionId}/render/excel`,
+    );
+    const estimatePdfAfter = await authFetch(`/estimate-versions/${first.versionId}/render/pdf`);
+    check(
+      'S4: the frozen snapshot columns are BYTE-IDENTICAL after approval',
+      JSON.stringify(estimateSnapshotAfter.rows[0]) ===
+        JSON.stringify(estimateSnapshotBefore.rows[0]),
+    );
+    check(
+      'S4: the rendered Excel/PDF bytes are byte-identical after approval',
+      (await sha256Of(Buffer.from(await estimateExcelAfter.arrayBuffer()))) ===
+        (await sha256Of(Buffer.from(await estimateExcelBefore.arrayBuffer()))) &&
+        (await sha256Of(Buffer.from(await estimatePdfAfter.arrayBuffer()))) ===
+          (await sha256Of(Buffer.from(await estimatePdfBefore.arrayBuffer()))),
+    );
+    // (g) re-approval by ANOTHER Reviewer+ is the idempotent conflict
+    const reApprove = await postAs(authCookie, approveEstimateUrl);
+    check(
+      'S4: re-approval answers 409 SIGNOFF_ALREADY_GIVEN (never a silent 200)',
+      reApprove.status === 409 &&
+        (reApprove.data as { error?: { code?: string } }).error?.code === 'SIGNOFF_ALREADY_GIVEN',
+    );
+    // (h) exactly ONE approval event, actor = the reviewer, details {}
+    const approvalEvents = await pool.query<{
+      actor_user_id: string | null;
+      resource_id: string;
+      details: Record<string, unknown>;
+    }>(
+      "SELECT actor_user_id, resource_id, details FROM audit_events WHERE action = 'estimate_version.approved' AND resource_id = $1",
+      [first.versionId],
+    );
+    check(
+      'S4: exactly ONE estimate_version.approved event (actor = the reviewer, details {})',
+      approvalEvents.rowCount === 1 &&
+        approvalEvents.rows[0]?.actor_user_id === reviewerUserId &&
+        JSON.stringify(approvalEvents.rows[0]?.details) === '{}',
+    );
+
+    // (i) LEGACY row: the takeoff's finalizer is nulled (pre-V1.1 posture, §5) — the
+    // four-eyes rule cannot collide and any Reviewer+ may approve
+    await pool.query('UPDATE finalized_takeoffs SET finalized_by = NULL WHERE document_id = $1', [
+      first.takeoffDocumentId,
+    ]);
+    const takeoffApprove = await postAs(
+      reviewerCookie,
+      `/projects/${first.projectId}/takeoffs/${first.takeoffDocumentId}/approve`,
+    );
+    const takeoffApprovalColumns = await pool.query<{ approved_by: string | null }>(
+      'SELECT approved_by FROM finalized_takeoffs WHERE document_id = $1',
+      [first.takeoffDocumentId],
+    );
+    const takeoffApprovalEvents = await pool.query<{ count: string }>(
+      "SELECT count(*) AS count FROM audit_events WHERE action = 'takeoff_document.approved' AND resource_id = $1",
+      [first.takeoffDocumentId],
+    );
+    check(
+      'S4: a LEGACY row (finalized_by NULL) is approvable by the reviewer',
+      takeoffApprove.status === 200 &&
+        takeoffApprovalColumns.rows[0]?.approved_by === reviewerUserId &&
+        takeoffApprovalEvents.rows[0]?.count === '1',
+      `status=${String(takeoffApprove.status)}`,
+    );
+
+    // (j) the non-finalized denials (existing codes, existing semantics)
+    const draftApprove = await postAs(
+      reviewerCookie,
+      `/estimate-versions/${first.draftVersionId}/approve`,
+    );
+    check(
+      'S4: a DRAFT version answers 409 VERSION_NOT_FINALIZED',
+      draftApprove.status === 409 &&
+        (draftApprove.data as { error?: { code?: string } }).error?.code ===
+          'VERSION_NOT_FINALIZED',
+    );
+    const followUpApprove = await postAs(
+      reviewerCookie,
+      `/projects/${first.projectId}/takeoffs/${first.followUpDocumentId}/approve`,
+    );
+    check(
+      'S4: a DRAFT takeoff answers 409 TAKEOFF_INVALID_TRANSITION',
+      followUpApprove.status === 409 &&
+        (followUpApprove.data as { error?: { code?: string } }).error?.code ===
+          'TAKEOFF_INVALID_TRANSITION',
+    );
+    check(
+      'S4: the non-finalized denials wrote ZERO approval events',
+      (
+        await pool.query<{ count: string }>(
+          "SELECT count(*) AS count FROM audit_events WHERE action IN ('estimate_version.approved','takeoff_document.approved')",
+        )
+      ).rows[0]?.count === '2',
+    );
+
+    // the reviewer's session is dropped again (the final session-count check stays exact)
+    await fetch(`${BASE}/auth/logout`, {
+      method: 'POST',
+      headers: { cookie: reviewerCookie ?? '' },
+    });
+
+    // re-capture the pre-restart audit snapshot: the approval events are now part of
+    // the history that must survive the restart byte-identically
+    const auditAfterS4 = await pool.query<{ count: string }>(
+      'SELECT count(*) AS count FROM audit_events',
+    );
+    auditCountBefore = auditAfterS4.rows[0]?.count ?? '-1';
 
     console.log('[smoke] SIGTERM → graceful shutdown…');
     api.kill('SIGTERM');
@@ -1242,8 +1508,8 @@ async function main(): Promise<void> {
     );
     const govAfter = governanceAfter.rows[0];
     check(
-      'bootstrap ignored on restart — still exactly TWO users, and BOTH DB-backed sessions survived',
-      govAfter !== undefined && govAfter.users === '2' && govAfter.sessions === '2',
+      'bootstrap ignored on restart — still exactly THREE users (admin + viewer + the S4 reviewer), and BOTH pre-restart sessions survived',
+      govAfter !== undefined && govAfter.users === '3' && govAfter.sessions === '2',
       JSON.stringify(govAfter ?? {}),
     );
     const sessionAfterRestart = await call('GET', '/auth/session');
@@ -1340,10 +1606,29 @@ async function main(): Promise<void> {
       'the finalized event is byte-identical after restart (append-only history)',
       JSON.stringify(finalizedEventAfter.rows[0]) === JSON.stringify(finalizedEvent),
     );
+    const approvalAfterRestart = await pool.query<{
+      approved_by: string | null;
+      approved_at: string | null;
+    }>('SELECT approved_by, approved_at FROM finalized_estimates WHERE version_id = $1', [
+      first.versionId,
+    ]);
+    check(
+      'S4: the approval state survived the restart (approved_by/approved_at persisted)',
+      approvalAfterRestart.rows[0]?.approved_by === reviewerUserId &&
+        typeof approvalAfterRestart.rows[0]?.approved_at === 'string',
+      JSON.stringify(approvalAfterRestart.rows[0] ?? {}),
+    );
     // the S1 logout check above revoked the admin cookie, so log in again for the
     // write proof — the fresh login is itself audited (auth.login_succeeded), but it
     // happens AFTER the count/byte-identity checks above, so those snapshots stay exact
     await loginOnce();
+    const approvedBundle = await call('GET', `/estimate-versions/${first.versionId}`);
+    check(
+      'S4: the reloaded bundle exposes the approval state additively (approvedBy = the reviewer)',
+      approvedBundle.status === 200 &&
+        (approvedBundle.data as { approvedBy?: { username?: string } | null }).approvedBy
+          ?.username === 'smoke-reviewer',
+    );
     const postRestartProject = await call('POST', '/projects', {
       projectId: crypto.randomUUID(),
       title: 'پروژه پس از راه‌اندازی',

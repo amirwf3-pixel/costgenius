@@ -12,9 +12,14 @@
  * atomically.
  *
  * `byVersionId` reloads the bundle and reassembles the exact `FinalizedEstimate`
- * (estimate + calculation + finalizedAt), deep-frozen.
+ * (estimate + calculation + finalizedAt + the S4 sign-off state), deep-frozen.
+ *
+ * `approve` (P8-A S4, CG-GOV §5) is the single UPDATE this table ever receives: it
+ * sets `approved_by`/`approved_at` guarded by `approved_by IS NULL`, so a racing
+ * second approval matches zero rows and returns false — exactly one writer wins.
+ * The frozen snapshot columns are never touched by it.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FinalizedEstimate, FinalizedEstimateRepository } from '@costgenius/projects';
 import { canonicalJson } from '../canonical-json.js';
 import type { DbExecutor } from '../db-executor.js';
@@ -46,6 +51,9 @@ export class DrizzleFinalizedEstimateRepository implements FinalizedEstimateRepo
           versionId: finalized.versionId,
           estimateId: finalized.estimate.estimateId,
           finalizedAt: finalized.finalizedAt,
+          // S4 (CG-GOV §5): the finalizing actor; pre-V1.1 rows (and an unstamped
+          // save) keep NULL — the legacy case the four-eyes rule treats as total.
+          finalizedBy: finalized.finalizedBy ?? null,
           s4Input: structuredClone(finalized.calculation.s4Input),
           s4Result: structuredClone(finalized.calculation.s4Result),
           rollup: structuredClone(finalized.calculation.rollup),
@@ -54,6 +62,8 @@ export class DrizzleFinalizedEstimateRepository implements FinalizedEstimateRepo
         return;
       }
 
+      // S4 (CG-GOV §5): finalized_by/approved_* are sign-off metadata, NOT snapshot
+      // content — an idempotent re-save never conflicts on (and never rewrites) them.
       const persisted = {
         finalizedAt: row.finalizedAt,
         s4Input: row.s4Input,
@@ -113,7 +123,26 @@ export class DrizzleFinalizedEstimateRepository implements FinalizedEstimateRepo
         reportModel: structuredClone(row.reportModel),
       },
       finalizedAt: row.finalizedAt,
+      // S4 (CG-GOV §5): the sign-off state rides on the bundle (metadata only).
+      finalizedBy: row.finalizedBy ?? null,
+      approval:
+        row.approvedBy !== null && row.approvedAt !== null
+          ? { approvedBy: row.approvedBy, approvedAt: row.approvedAt }
+          : null,
     };
     return deepFreeze(finalized);
+  }
+
+  async approve(versionId: string, approverUserId: string, approvedAt: string): Promise<boolean> {
+    // The single irreversible FINALIZED → APPROVED/LOCKED write, guarded atomically:
+    // a concurrent (or sequential) second approval matches zero rows → false.
+    const updated = await this.#db
+      .update(finalizedEstimates)
+      .set({ approvedBy: approverUserId, approvedAt })
+      .where(
+        and(eq(finalizedEstimates.versionId, versionId), isNull(finalizedEstimates.approvedBy)),
+      )
+      .returning({ versionId: finalizedEstimates.versionId });
+    return updated.length === 1;
   }
 }

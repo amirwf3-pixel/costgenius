@@ -215,7 +215,8 @@ start` with `DATABASE_URL`, and serve `apps/web/dist` behind a proxy. Every piec
   management via the `/users` routes, and the 20-event audit catalog written in the
   same transaction as the mutation (DB-level `UPDATE`/`DELETE` denial for the
   application role — see the section above). Reviewer sign-off (S4) is
-  contract-closed but **not implemented**; there is deliberately NO audit read API or
+  **implemented** (the #37/#38 approve routes — Reviewer+, four-eyes, irreversible;
+  approval state persisted on the finalized tables); there is deliberately NO audit read API or
   UI in V1.1 (ops reads `audit_events` directly in PostgreSQL).
 - Managing users today means the `/users` API surface (no admin UI yet — deliberately
   out of the S2 UI scope).

@@ -185,8 +185,8 @@ events, and the event is appended only after the mutation reached its successful
 in-transaction state. `details` carries contract-approved structured fields only
 (never credentials, tokens or arbitrary bodies). There is NO audit read API or UI in
 V1.1 — the table is write-only from the application; the two `approved` events of the
-catalog stay unreachable until the S4 sign-off routes exist. 401/403 denials write
-nothing.
+catalog are written ONLY by the S4 sign-off routes (#37/#38), in the same transaction
+as the approval mutation. 401/403 denials write nothing.
 
 | Route                                                                                                 | Purpose                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -203,11 +203,13 @@ nothing.
 | POST `/takeoff/quantities/preview`                                                                    | stateless dimensional quantity preview (D-015/D5-A; exact-only, `rounding` rejected; engine errors → `TAKEOFF_QUANTITIES_REJECTED` with engine details only)                                            |
 | POST `/estimate-versions/:id/calculate`                                                               | S4 preview (not persisted)                                                                                                                                                                              |
 | POST `/estimate-versions/:id/finalize`                                                                | atomic finalization (201)                                                                                                                                                                               |
+| POST `/estimate-versions/:id/approve`                                                                 | reviewer sign-off (#37; Reviewer+, four-eyes, irreversible)                                                                                                                                             |
 | GET `/estimate-versions/:id/render/excel` · `/render/pdf`                                             | deterministic render from the snapshot (a draft → 409 VERSION_NOT_FINALIZED)                                                                                                                            |
 | POST `/projects/:id/takeoffs`                                                                         | create a takeoff chain's first draft document (201, D-016)                                                                                                                                              |
 | GET `/projects/:id/takeoffs`                                                                          | the project-scoped takeoff list — a pure projection (all statuses, `(takeoffId, documentNumber)` order, no filtering/pagination; P7-S1)                                                                 |
 | GET `/projects/:id/takeoffs/:documentId`                                                              | the draft/archived document, or the finalized bundle (the estimate-version convention)                                                                                                                  |
 | POST `/projects/:id/takeoffs/:documentId/{save,archive,unarchive,finalize,follow-up,transfer-to-boq}` | full-document lifecycle under `expectedRevision` (409 on stale); finalize runs the engine and persists the immutable snapshot (201); transfer creates one BOQ line per priced itemCode itemTotal (G2=B) |
+| POST `/projects/:id/takeoffs/:documentId/approve`                                                     | reviewer sign-off (#38; Reviewer+, four-eyes, irreversible)                                                                                                                                             |
 | POST `/projects/:id/takeoffs/:documentId/calculate`                                                   | stateless draft calculation preview — the engine result verbatim, nothing persisted/mutated/transferable; failures `422 TAKEOFF_SOLUTION_REJECTED` with structured `details.failures` (P7-S2)           |
 | GET `/projects/:id/takeoffs/:documentId/render/{excel,pdf}`                                           | standard Takeoff report from the finalized snapshot only (a draft → 409 TAKEOFF_NOT_FINALIZED)                                                                                                          |
 
@@ -298,9 +300,7 @@ Fixtures use the official 1404 rows (the golden estimate) — never invented pri
 ## 12. Not implemented (boundaries only — no claim of existence)
 
 `apps/worker`; the scaffold packages `market-prices`, `audit`, `ai-assist`,
-`contracts`, `i18n`, `ui`; reviewer sign-off (the Phase-8 **S4** stage — the #37/#38
-approve routes of the §3 matrix are not registered, which is also why the two
-`approved` audit events of the S3 catalog are unreachable by design); an audit read
+`contracts`, `i18n`, `ui`; an audit read
 API/UI (the `audit_events` table is write-only from the application in V1.1);
 organizations and RLS; drawing management (unspecified); Excel live formulas; a
 Docker/container artifact; load testing; login rate limiting and CSRF tokens

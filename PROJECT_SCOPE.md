@@ -75,8 +75,9 @@ CostGenius is a professional quantity-takeoff (متره) and cost-estimation (ب
 > **Status note (2026-09-28, D-018):** Phase 8 (P8-A, the proposed V1.1) closes the
 > governance contracts for exactly that deferred clause — authentication, the five
 > roles, actor-stamped append-only audit and minimal reviewer sign-off
-> (`apps/api/spec/CG-GOV-SPEC@0.1.0.md`). Contract-closed only; implementation pending
-> a separate execution order.
+> (`apps/api/spec/CG-GOV-SPEC@0.1.0.md`). Implemented and verified in stages under
+> the owner's execution orders — S0..S4 COMPLETE (2026-09-28/29; see the
+> implementation-status table in the spec).
 
 ## 7. Open questions (require domain-expert input)
 

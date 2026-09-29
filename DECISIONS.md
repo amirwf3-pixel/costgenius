@@ -349,7 +349,7 @@ documentNumber)` ordering; no filtering/pagination in V1; project isolation mand
 > implementation follows the closed contracts with no deviation; the API route count is
 > 28 and the D-015 golden total remains 69,011,321.1668.
 
-## D-018 · Phase 8 (P8-A) Governance & Trust — contract closure (Accepted — S0+S1+S2+S3 implemented; S4 not started)
+## D-018 · Phase 8 (P8-A) Governance & Trust — contract closure (Accepted — S0..S4 implemented)
 
 - **Date**: 2026-09-28 · **Status**: Accepted — the three owner decisions of the
   Phase-8 decision gate are final and authoritative. This is a **contract-closure**
@@ -412,7 +412,8 @@ documentNumber)` ordering; no filtering/pagination in V1; project isolation mand
 > **Current status — S0 contract closure COMPLETE; S1 authentication COMPLETE
 > (2026-09-28, under the owner's S1 execution order); S2 RBAC enforcement COMPLETE
 > (2026-09-28, under the owner's S2 execution order); S3 audit writer COMPLETE
-> (2026-09-28, under the owner's S3 execution order); S4 NOT STARTED.**
+> (2026-09-28, under the owner's S3 execution order); S4 reviewer sign-off COMPLETE
+> (2026-09-29, under the owner's S4 execution order).**
 > S1 delivered exactly the §1 contract: the `0002_p8_governance` migration (9→12
 > tables; `users`/`sessions`/`audit_events`), the scrypt password records
 > (`scrypt$16384$8$1$salt$hash`, constant-time verify), 256-bit session tokens stored
@@ -451,7 +452,8 @@ AUTH_INVALID_CREDENTIALS` (no enumeration) and `401 UNAUTHENTICATED` error codes
 > contract**: the canonical append-only audit writer — `packages/projects/src/audit.ts`
 > (the exact 20-event catalog as frozen builders: 14 domain §4.3 + 6 governance §4.4
 > with the exact action strings/casing; the two `approved` events are built but
-> unreachable until S4 provides the approve mutations) and the INSERT-only
+> were unreachable until S4 provided the approve mutations — landed 2026-09-29 via the
+> #37/#38 routes) and the INSERT-only
 > `DrizzleAuditEventRepository` — with `actorUserId` derived ONLY from the
 > authenticated session (the org_admin as the user-management actor, never the
 > target; `auth.login_failed`'s null actor is the contract's single null-actor,
@@ -476,8 +478,14 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
 > domain event payloads byte-exact, zero-event denials, restart persistence, the
 > restricted-role writer and direct 42501 tamper probes).
 >
-> S4 (reviewer sign-off, incl. the #37/#38 approve routes) remains NOT STARTED and
-> requires a separate owner execution order.
+> S4 (reviewer sign-off) COMPLETE (2026-09-29, under the owner's S4 execution order):
+> migration `0003_p8a_s4_signoff.sql` (`finalized_by`/`approved_by`/`approved_at` on
+> BOTH finalized tables — still 12 tables, 0000–0002 untouched), the #37/#38 approve
+> routes (Reviewer+; four-eyes `SIGNOFF_SELF_APPROVAL_FORBIDDEN`; irreversible — 409
+> `SIGNOFF_ALREADY_GIVEN`), the approval UPDATE + its audit event in ONE transaction,
+> byte-identical snapshots/renders, and real-PostgreSQL race proofs (fresh + used
+> database passes). P8-B remains NOT STARTED and requires a separate owner execution
+> order.
 
 ## Open decisions
 

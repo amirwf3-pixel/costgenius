@@ -17,7 +17,8 @@
  * DB      — the application surface is append-only (the writer exposes append only;
  *           the PostgreSQL REVOKE-level proof is the env-gated node-postgres suite);
  * SECURITY— no credential/token material anywhere in audit_events, the actor is always
- *           the session-resolved identity, and the S4 approval events stay unreachable.
+ *           the session-resolved identity, and (since S4) the approval events ride
+ *           the same transactional writer through the two approve routes.
  */
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
@@ -972,11 +973,14 @@ describe('S3 §4.2/§4.3 — append-only surface and the S4 boundary', () => {
     // REVOKE cannot bind — that limitation is documented, never used to weaken the rule.
   });
 
-  it('no approval event is reachable — S4 is not implemented (§4.3 #37/#38)', async () => {
+  it('the approval events exist ONLY through the S4 approve routes (§4.3 #37/#38)', async () => {
+    // No workflow of this suite approves anything — finalize alone never emits an
+    // approval event (the two actions are reachable only via POST …/approve).
     const all = await server.auditEvents();
     expect(all.filter((row) => row.action === 'estimate_version.approved')).toEqual([]);
     expect(all.filter((row) => row.action === 'takeoff_document.approved')).toEqual([]);
-    // the writer contract still carries the S4 builders (payload: actor + instant only)
+    // the writer contract carries the S4 builders (payload: actor + instant only);
+    // the approve routes are verified exhaustively by test/signoff.test.ts
     const actor = { userId: adminId, username: TEST_ADMIN.username };
     expect(estimateVersionApproved(actor, 'v-x', 'p-x')).toEqual({
       actorUserId: adminId,

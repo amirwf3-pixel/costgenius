@@ -20,7 +20,9 @@ import { appendAuditEvent, type Transact } from './audit.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type {
   EstimateRepository,
+  FinalizedEstimate,
   FinalizedEstimateRepository,
+  FinalizedTakeoff,
   FinalizedTakeoffRepository,
   ProjectRepository,
   TakeoffDocument,
@@ -41,10 +43,15 @@ import type {
 } from '@costgenius/projects';
 import {
   boqLinesAdded,
+  ensureNotSelfApproval,
+  ensureNotYetApproved,
   estimateCreated,
+  estimateVersionApproved,
   estimateVersionCreated,
   estimateVersionFinalized,
   projectCreated,
+  requireApprovalInstant,
+  takeoffDocumentApproved,
   takeoffDocumentArchived,
   takeoffDocumentCreated,
   takeoffDocumentFinalized,
@@ -78,6 +85,7 @@ import {
   finalizeEstimate,
   finalizeTakeoffDocument,
   previewTakeoffDocumentCalculation,
+  ProjectsError,
   renderEstimateExcel,
   renderEstimatePdf,
   renderTakeoffExcel,
@@ -340,6 +348,56 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     userId: auth.user.userId,
     username: auth.user.username,
   });
+
+  // P8-A S4 (CG-GOV §5): the finalized-bundle responses expose the approval state
+  // ADDITIVELY — `approvedBy: {userId, username} | null` and `approvedAt: string | null`
+  // — and nothing else changes. `finalized_by` stays server-internal (it feeds the
+  // four-eyes rule; the contract exposes the approval, not the finalizer).
+  const approvalFields = async (
+    approval: FinalizedEstimate['approval'],
+  ): Promise<{
+    approvedBy: { userId: string; username: string } | null;
+    approvedAt: string | null;
+  }> => {
+    if (approval === null || approval === undefined) return { approvedBy: null, approvedAt: null };
+    const approver = await deps.governance.users.findById(approval.approvedBy);
+    if (approver === undefined) {
+      // The FK guarantees the row exists; missing here is store inconsistency, not a
+      // client condition — the generic 500 leaks nothing.
+      throw new Error(
+        `approved_by "${approval.approvedBy}" does not resolve to a persisted user; the store is inconsistent`,
+      );
+    }
+    return {
+      approvedBy: { userId: approval.approvedBy, username: approver.username },
+      approvedAt: approval.approvedAt,
+    };
+  };
+
+  /** A finalized-estimate bundle as the API answers it (bundle + approval state, §5). */
+  const estimateBundleBody = async (
+    finalized: FinalizedEstimate,
+  ): Promise<Record<string, unknown>> => ({
+    estimate: finalized.estimate,
+    versionId: finalized.versionId,
+    calculation: finalized.calculation,
+    finalizedAt: finalized.finalizedAt,
+    ...(await approvalFields(finalized.approval)),
+  });
+
+  /** A finalized-takeoff bundle as the API answers it (bundle + approval state, §5). */
+  const takeoffBundleBody = async (
+    finalized: FinalizedTakeoff,
+  ): Promise<Record<string, unknown>> => ({
+    document: finalized.document,
+    documentId: finalized.documentId,
+    takeoffId: finalized.takeoffId,
+    documentNumber: finalized.documentNumber,
+    finalizedAt: finalized.finalizedAt,
+    input: finalized.input,
+    result: finalized.result,
+    ...(await approvalFields(finalized.approval)),
+  });
   const publicRoutes = new Set(['GET /health', 'POST /auth/login']);
 
   app.addHook('preHandler', async (request, reply) => {
@@ -594,7 +652,8 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
   app.get('/estimate-versions/:versionId', async (request, reply) => {
     const versionId = (request.params as { versionId: string }).versionId;
     const finalized = await deps.repositories.finalized.byVersionId(versionId);
-    if (finalized !== undefined) return await reply.code(200).send(finalized);
+    if (finalized !== undefined)
+      return await reply.code(200).send(await estimateBundleBody(finalized));
     const estimate = await deps.repositories.estimates.findByVersionId(versionId);
     const version = estimate?.versions.find((v) => v.versionId === versionId);
     if (version === undefined)
@@ -778,6 +837,8 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
       reportId: body.reportId ?? `report-${versionId}`,
       generatedAt: body.generatedAt ?? deps.clock(),
       finalizedAt: body.finalizedAt ?? deps.clock(),
+      // S4 (CG-GOV §5): stamp the finalizing actor — the four-eyes rule reads it.
+      finalizedBy: auth.user.userId,
     });
     // One transaction persists the finalization transition, the lines, the snapshot —
     // and, since S3, the `estimate_version.finalized` event with the rollup total
@@ -790,7 +851,57 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
         deps.clock,
       );
     });
-    return await reply.code(201).send(finalized);
+    return await reply.code(201).send(await estimateBundleBody(finalized));
+  });
+
+  // P8-A S4 (CG-GOV §3 #37/§5) — reviewer sign-off of a FINALIZED estimate version:
+  // the single irreversible FINALIZED → APPROVED/LOCKED transition. Authorization
+  // (Reviewer+) is decided by the gate BEFORE this handler; the four-eyes rule and the
+  // already-approved conflict are decided on the loaded bundle BEFORE any write; the
+  // atomic `approve` (guarded by `approved_by IS NULL`) + the `estimate_version.approved`
+  // audit event commit in ONE transaction — a lost race or a failing event append
+  // leaves the version unapproved with zero events (§4.2/§9).
+  app.post('/estimate-versions/:versionId/approve', async (request, reply) => {
+    const auth = requireAuth(request);
+    const versionId = (request.params as { versionId: string }).versionId;
+    const estimate = await deps.repositories.estimates.findByVersionId(versionId);
+    if (estimate === undefined)
+      return await reply.code(404).send(notFound('version', versionId).body);
+    const finalized = await deps.repositories.finalized.byVersionId(versionId);
+    if (finalized === undefined) {
+      // A version that exists but is not finalized (existing code, existing semantics).
+      return await reply.code(409).send({
+        error: {
+          code: 'VERSION_NOT_FINALIZED',
+          message: `version ${versionId} is a draft; only a finalized version can be approved`,
+        },
+      });
+    }
+    // No write, no event on any denial path (§4.4/§6).
+    ensureNotYetApproved(finalized.approval);
+    ensureNotSelfApproval(finalized.finalizedBy, auth.user.userId);
+    const approvedAt = requireApprovalInstant(deps.clock());
+    await deps.transact(async (tx) => {
+      if (!(await tx.finalized.approve(versionId, auth.user.userId, approvedAt))) {
+        // Lost a race (or a between-read-and-write approval): the row is already
+        // approved — the idempotent conflict of §5, never a silent 200.
+        throw new ProjectsError(
+          'SIGNOFF_ALREADY_GIVEN',
+          'this estimate version is already approved; approval is irreversible and cannot be repeated',
+        );
+      }
+      await appendAuditEvent(
+        tx.audit,
+        estimateVersionApproved(actorOf(auth), versionId, estimate.projectId),
+        deps.clock,
+      );
+    });
+    const approved = await deps.repositories.finalized.byVersionId(versionId);
+    if (approved === undefined) {
+      // Just approved and reloaded on the same store — unreachable defensive branch.
+      throw new Error(`version ${versionId} cannot be reloaded after its approval`);
+    }
+    return await reply.code(200).send(await estimateBundleBody(approved));
   });
 
   // ---- Rendering (from the reloaded finalized snapshot; never recalculated) ---------------
@@ -900,7 +1011,7 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     const params = takeoffDocumentParamsSchema.parse(request.params);
     const finalized = await deps.repositories.finalizedTakeoffs.byDocumentId(params.documentId);
     if (finalized !== undefined && finalized.document.projectId === params.projectId) {
-      return await reply.code(200).send(finalized);
+      return await reply.code(200).send(await takeoffBundleBody(finalized));
     }
     const document = await findProjectTakeoffDocument(deps, params.projectId, params.documentId);
     if (document === undefined) {
@@ -1010,6 +1121,8 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     }
     const finalized = finalizeTakeoffDocument(document, {
       finalizedAt: body.finalizedAt ?? deps.clock(),
+      // S4 (CG-GOV §5): stamp the finalizing actor — the four-eyes rule reads it.
+      finalizedBy: auth.user.userId,
     });
     // S3 (§4.3 #23): the atomic transition + snapshot + event commit together; a
     // non-calculating draft is rejected by the domain BEFORE any write (zero events).
@@ -1021,7 +1134,60 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
         deps.clock,
       );
     });
-    return await reply.code(201).send(finalized);
+    return await reply.code(201).send(await takeoffBundleBody(finalized));
+  });
+
+  // P8-A S4 (CG-GOV §3 #38/§5) — reviewer sign-off of a FINALIZED takeoff document:
+  // the single irreversible FINALIZED → APPROVED/LOCKED transition, project-scoped and
+  // isolated exactly like every takeoff route (a document of another project is a bare
+  // 404). Authorization (Reviewer+) is decided by the gate; the four-eyes rule and the
+  // already-approved conflict are decided on the loaded bundle; the atomic `approve`
+  // + the `takeoff_document.approved` audit event commit in ONE transaction (§4.2/§9).
+  app.post('/projects/:projectId/takeoffs/:documentId/approve', async (request, reply) => {
+    const auth = requireAuth(request);
+    const params = takeoffDocumentParamsSchema.parse(request.params);
+    const document = await findProjectTakeoffDocument(deps, params.projectId, params.documentId);
+    if (document === undefined) {
+      return await reply.code(404).send(notFound('takeoff document', params.documentId).body);
+    }
+    if (document.status !== 'finalized') {
+      // Existing code, existing semantics (the domain guard of every lifecycle route).
+      throw new ProjectsError(
+        'TAKEOFF_INVALID_TRANSITION',
+        `only a finalized document can be approved (document "${params.documentId}" is ${document.status})`,
+      );
+    }
+    const finalized = await deps.repositories.finalizedTakeoffs.byDocumentId(params.documentId);
+    if (finalized === undefined) {
+      // Unreachable on a consistent store: the document row says finalized, so the
+      // snapshot exists (they commit together). Fail loudly, never partially.
+      throw new Error(
+        `document "${params.documentId}" is finalized without a snapshot; the store is inconsistent`,
+      );
+    }
+    // No write, no event on any denial path (§4.4/§6).
+    ensureNotYetApproved(finalized.approval);
+    ensureNotSelfApproval(finalized.finalizedBy, auth.user.userId);
+    const approvedAt = requireApprovalInstant(deps.clock());
+    await deps.transact(async (tx) => {
+      if (!(await tx.finalizedTakeoffs.approve(params.documentId, auth.user.userId, approvedAt))) {
+        // Lost a race (or a between-read-and-write approval): the idempotent §5 conflict.
+        throw new ProjectsError(
+          'SIGNOFF_ALREADY_GIVEN',
+          'this takeoff document is already approved; approval is irreversible and cannot be repeated',
+        );
+      }
+      await appendAuditEvent(
+        tx.audit,
+        takeoffDocumentApproved(actorOf(auth), params.documentId, params.projectId),
+        deps.clock,
+      );
+    });
+    const approved = await deps.repositories.finalizedTakeoffs.byDocumentId(params.documentId);
+    if (approved === undefined) {
+      throw new Error(`document ${params.documentId} cannot be reloaded after its approval`);
+    }
+    return await reply.code(200).send(await takeoffBundleBody(approved));
   });
 
   // P7-S2 (CG-FT@0.2.0 §16 + §12.2, D-PREVIEW=B/D-ERROR=C): the STATELESS draft

@@ -313,7 +313,7 @@ export function takeoffDocumentTransferredToBoq(
  * actor + instant by design (§4.3: no details).
  * -----------------------------------------------------------------------------------------------*/
 
-/** `estimate_version.approved` (S4 — unreachable until the sign-off stage). */
+/** `estimate_version.approved` (S4 — written ONLY by the #37 approve route, in the same transaction as the approval). */
 export function estimateVersionApproved(
   actor: Actor,
   versionId: string,
@@ -329,7 +329,7 @@ export function estimateVersionApproved(
   );
 }
 
-/** `takeoff_document.approved` (S4 — unreachable until the sign-off stage). */
+/** `takeoff_document.approved` (S4 — written ONLY by the #38 approve route, in the same transaction as the approval). */
 export function takeoffDocumentApproved(
   actor: Actor,
   documentId: string,

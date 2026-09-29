@@ -1,7 +1,7 @@
 /**
  * THE P8-A S2 route × role authorization matrix (CG-GOV-SPEC@0.1.0 §2/§3/§9).
  *
- * Every one of the 34 protected routes is probed against ALL SIX identities:
+ * Every one of the 36 protected routes is probed against ALL SIX identities:
  * anonymous (→ 401 UNAUTHENTICATED) and one real DB-backed user per role
  * (org_admin, estimator, reviewer, viewer, data_steward — each with a REAL session
  * cookie from POST /auth/login; nothing is mocked at the route layer).
@@ -81,6 +81,8 @@ let VF = ''; // FINALIZED version (renders)
 let TV = ''; // transfer-target draft version
 let DTD = ''; // takeoff draft (saved, revision 2)
 let FTD = ''; // FINALIZED takeoff document
+let VAP = ''; // S4: FINALIZED estimate version, never approved (approve denied-probe target)
+let TAP = ''; // S4: FINALIZED takeoff document, never approved (approve denied-probe target)
 let U0 = ''; // a viewer user id (user-management denied-probe target)
 
 const TAKEOFF_LINE = {
@@ -145,6 +147,28 @@ async function freshTakeoffFinalized(cookie: string): Promise<string> {
     expectedRevision: 2,
   });
   return documentId;
+}
+
+/**
+ * S4 (CG-GOV §5): creates a fresh FINALIZED estimate version finalized by the
+ * ESTIMATOR — so ANY Reviewer+ approver (org_admin or reviewer) is four-eyes-clean
+ * against the finalizer, and the approve route's normal contract (200) is observable.
+ */
+async function freshFinalizedVersionByEstimator(): Promise<string> {
+  const estimator = await server.cookieFor('estimator');
+  const versionId = await freshDraftVersion(estimator);
+  await mustSucceed(estimator, 'POST', `/estimate-versions/${versionId}/lines`, {
+    lines: [{ lineId: 'apl', pricebookCode: '010101', quantity: '10', unit: 'm2' }],
+  });
+  await mustSucceed(estimator, 'POST', `/estimate-versions/${versionId}/finalize`, {
+    ...GOLDEN_COEFFICIENTS,
+  });
+  return versionId;
+}
+
+/** S4: a fresh FINALIZED takeoff finalized by the ESTIMATOR (four-eyes-clean). */
+async function freshFinalizedTakeoffByEstimator(): Promise<string> {
+  return await freshTakeoffFinalized(await server.cookieFor('estimator'));
 }
 
 /** Creates a fresh draft version (no lines) on E0. */
@@ -259,6 +283,10 @@ beforeAll(async () => {
   // takeoff fixtures
   DTD = await freshTakeoffDraft(admin);
   FTD = await freshTakeoffFinalized(admin);
+
+  // S4 fixtures — finalized but NEVER approved (the approve routes' denied probes)
+  VAP = await freshFinalizedVersionByEstimator();
+  TAP = await freshFinalizedTakeoffByEstimator();
 
   // a viewer user — the target of the user-management denied probes
   const viewer = await mustSucceed(admin, 'POST', '/users', {
@@ -525,6 +553,20 @@ const CASES: readonly RouteCase[] = [
       return { url: `/estimate-versions/${versionId}/finalize`, payload: GOLDEN_COEFFICIENTS };
     },
   },
+  // #37 — S4 estimate sign-off: Reviewer+ (CG-GOV §3/§5)
+  {
+    key: 'POST /estimate-versions/:versionId/approve',
+    method: 'POST',
+    requirement: 'reviewer',
+    allowed: ['org_admin', 'reviewer'],
+    allowedStatus: 200,
+    deniedUrl: () => `/estimate-versions/${VAP}/approve`,
+    state: () => snapshot(`/estimate-versions/${VAP}`),
+    // finalized by the ESTIMATOR per probe — the approver is never the finalizer
+    arrange: async () => ({
+      url: `/estimate-versions/${await freshFinalizedVersionByEstimator()}/approve`,
+    }),
+  },
   {
     key: 'GET /estimate-versions/:versionId/render/excel',
     method: 'GET',
@@ -652,6 +694,20 @@ const CASES: readonly RouteCase[] = [
       };
     },
   },
+  // #38 — S4 takeoff sign-off: Reviewer+ (CG-GOV §3/§5)
+  {
+    key: 'POST /projects/:projectId/takeoffs/:documentId/approve',
+    method: 'POST',
+    requirement: 'reviewer',
+    allowed: ['org_admin', 'reviewer'],
+    allowedStatus: 200,
+    deniedUrl: () => `/projects/${P0}/takeoffs/${TAP}/approve`,
+    state: () => snapshot(`/projects/${P0}/takeoffs/${TAP}`),
+    // finalized by the ESTIMATOR per probe — the approver is never the finalizer
+    arrange: async () => ({
+      url: `/projects/${P0}/takeoffs/${await freshFinalizedTakeoffByEstimator()}/approve`,
+    }),
+  },
   {
     key: 'POST /projects/:projectId/takeoffs/:documentId/calculate',
     method: 'POST',
@@ -728,7 +784,7 @@ const CASES: readonly RouteCase[] = [
 ];
 
 describe('P8-A S2 — the route × role authorization matrix (CG-GOV §3)', () => {
-  it('the case table IS the policy table (34 protected routes, no drift)', () => {
+  it('the case table IS the policy table (36 protected routes, no drift)', () => {
     expect(Object.keys(ROUTE_POLICIES).length).toBe(CASES.length);
     for (const routeCase of CASES) {
       expect(ROUTE_POLICIES[routeCase.key], routeCase.key).toBe(routeCase.requirement);

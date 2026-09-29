@@ -39,6 +39,7 @@ import type {
   TakeoffResult,
 } from '@costgenius/projects';
 import { projects } from './projects.js';
+import { users } from './users.js';
 
 export const takeoffDocuments = pgTable(
   'takeoff_documents',
@@ -134,6 +135,18 @@ export const finalizedTakeoffs = pgTable('finalized_takeoffs', {
   documentNumber: integer('document_number').notNull(),
   /** Domain Instant, stored verbatim (never database-generated). */
   finalizedAt: text('finalized_at').notNull(),
+  /**
+   * P8-A S4 (CG-GOV §5): who finalized — the actor stamped at finalization. NULL on
+   * rows finalized before V1.1 (legacy; Reviewer+ may approve those, CG-GOV §5).
+   */
+  finalizedBy: uuid('finalized_by').references(() => users.userId),
+  /**
+   * P8-A S4 (CG-GOV §5): the approving user. NULL = not approved; `approved_by` +
+   * `approved_at` both set = APPROVED/LOCKED (irreversible in this phase).
+   */
+  approvedBy: uuid('approved_by').references(() => users.userId),
+  /** Domain Instant of the approval, stored verbatim (never database-generated). */
+  approvedAt: text('approved_at'),
   /** CG-IR-MEAS spec version of the result (engine stamp). */
   specVersion: text('spec_version').notNull(),
   /** Engine version of the result (engine stamp). */

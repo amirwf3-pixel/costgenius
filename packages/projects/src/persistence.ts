@@ -51,6 +51,14 @@ export interface EstimateRepository {
 export interface FinalizedEstimateRepository {
   save(finalized: FinalizedEstimate): Promise<void>;
   byVersionId(versionId: string): Promise<FinalizedEstimate | undefined>;
+  /**
+   * P8-A S4 (CG-GOV §5): atomically sets `approved_by`/`approved_at` — the single
+   * irreversible FINALIZED → APPROVED/LOCKED write. Returns false when the version is
+   * already approved (or missing), leaving the row untouched; the caller maps that to
+   * 409 SIGNOFF_ALREADY_GIVEN. The WHERE `approved_by IS NULL` guard makes double
+   * approval impossible even under concurrency: exactly one racing writer wins.
+   */
+  approve(versionId: string, approverUserId: string, approvedAt: string): Promise<boolean>;
 }
 
 /** Deterministic in-memory ProjectRepository (reference adapter; no persistence). */
@@ -121,6 +129,18 @@ export class InMemoryFinalizedEstimateRepository implements FinalizedEstimateRep
   byVersionId(versionId: string): Promise<FinalizedEstimate | undefined> {
     return Promise.resolve(this.#byVersion.get(versionId));
   }
+
+  approve(versionId: string, approverUserId: string, approvedAt: string): Promise<boolean> {
+    const existing = this.#byVersion.get(versionId);
+    if (existing === undefined || (existing.approval ?? null) !== null) {
+      return Promise.resolve(false);
+    }
+    this.#byVersion.set(versionId, {
+      ...existing,
+      approval: { approvedBy: approverUserId, approvedAt },
+    });
+    return Promise.resolve(true);
+  }
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -166,6 +186,14 @@ export interface FinalizedTakeoffRepository {
    */
   save(finalized: FinalizedTakeoff, expectedRevision: number): Promise<void>;
   byDocumentId(documentId: string): Promise<FinalizedTakeoff | undefined>;
+  /**
+   * P8-A S4 (CG-GOV §5): atomically sets `approved_by`/`approved_at` — the single
+   * irreversible FINALIZED → APPROVED/LOCKED write. Returns false when the document is
+   * already approved (or missing), leaving the row untouched; the caller maps that to
+   * 409 SIGNOFF_ALREADY_GIVEN. The WHERE `approved_by IS NULL` guard makes double
+   * approval impossible even under concurrency: exactly one racing writer wins.
+   */
+  approve(documentId: string, approverUserId: string, approvedAt: string): Promise<boolean>;
 }
 
 /**
@@ -368,5 +396,17 @@ export class InMemoryFinalizedTakeoffRepository implements FinalizedTakeoffRepos
 
   byDocumentId(documentId: string): Promise<FinalizedTakeoff | undefined> {
     return Promise.resolve(this.#byDocument.get(documentId));
+  }
+
+  approve(documentId: string, approverUserId: string, approvedAt: string): Promise<boolean> {
+    const existing = this.#byDocument.get(documentId);
+    if (existing === undefined || (existing.approval ?? null) !== null) {
+      return Promise.resolve(false);
+    }
+    this.#byDocument.set(documentId, {
+      ...existing,
+      approval: { approvedBy: approverUserId, approvedAt },
+    });
+    return Promise.resolve(true);
   }
 }

@@ -15,6 +15,7 @@
  * migration shape matches the closed contract (9 → 12 tables).
  */
 import { sql } from 'drizzle-orm';
+import { projects } from './projects.js';
 import { boolean, check, index, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
@@ -74,7 +75,7 @@ export const auditEvents = pgTable(
     action: text('action').notNull(),
     resourceType: text('resource_type').notNull(),
     resourceId: text('resource_id').notNull(),
-    projectId: uuid('project_id'),
+    projectId: uuid('project_id').references(() => projects.projectId),
     details: jsonb('details').notNull().default({}),
   },
   (table) => [
@@ -84,5 +85,6 @@ export const auditEvents = pgTable(
   ],
 );
 
-// The `audit_events.project_id` FK (→ projects) and the migration's REVOKE exist in the
-// migration SQL only; the runtime table above has no reader until the S3 audit stage.
+// The `audit_events.project_id` FK (→ projects) is declared here since S4 — it has
+// existed in the database from migration 0002 (the S1 snapshot metadata omitted it);
+// the migration's REVOKE remains migration-SQL-only by design.

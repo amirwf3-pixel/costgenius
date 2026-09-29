@@ -300,7 +300,7 @@ Fixtures use the official 1404 rows (the golden estimate) — never invented pri
 ## 12. Not implemented (boundaries only — no claim of existence)
 
 `apps/worker`; the scaffold packages `market-prices`, `audit`, `ai-assist`,
-`contracts`, `i18n`, `ui`; an audit read
+`contracts`, `i18n`, `ui`; the pricebook edition lifecycle (Phase-8 **P8-B** — contract closed in `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`, which is implementation-ready with D-PB-1..D-PB-5 final and supersedes the lifecycle sections of the 0.1.0 spec; implementation NOT started); an audit read
 API/UI (the `audit_events` table is write-only from the application in V1.1);
 organizations and RLS; drawing management (unspecified); Excel live formulas; a
 Docker/container artifact; load testing; login rate limiting and CSRF tokens

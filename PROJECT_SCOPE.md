@@ -79,6 +79,13 @@ CostGenius is a professional quantity-takeoff (متره) and cost-estimation (ب
 > the owner's execution orders — S0..S4 COMPLETE (2026-09-28/29; see the
 > implementation-status table in the spec).
 
+> **Status note (2026-09-29, D-019 / P8-B):** the **pricebook-edition lifecycle** layer
+> (multi-edition official pricebooks with activation/archival and guaranteed historical
+> reproducibility of finalized work) is **contract closed** in
+> `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md` — implementation-ready,
+> D-PB-1 through D-PB-5 final (D-PB-1 = B, D-PB-2 = A, D-PB-3 = B, D-PB-4 = A,
+> D-PB-5 = A). Contract only — implementation NOT started.
+
 ## 7. Open questions (require domain-expert input)
 
 - ~~V1 disciplines~~ — resolved: ابنیه only (an earlier owner scope decision; not D-015, which is the dimensional quantity-entry decision).

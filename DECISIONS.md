@@ -487,6 +487,51 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
 > database passes). P8-B remains NOT STARTED and requires a separate owner execution
 > order.
 
+## D-019 · Phase 8 (P8-B) Pricebook edition lifecycle — contract closure (Accepted — contract ONLY, NOT implemented)
+
+- **Date**: 2026-09-29 · **Status**: Accepted — the P8-B decision-gate resolutions
+  **D-PB-1 = B** (the shipped 1404 edition enters through the same edition pipeline as a
+  first-boot idempotent seed), **D-PB-2 = A** (three states: DRAFT/ACTIVE/ARCHIVED;
+  validation atomic in import; no separate approval workflow), **D-PB-4 = A** (archiving
+  the only ACTIVE edition is permitted — the 0-active state fails deterministically via
+  `EDITION_NOT_ACTIVE`) and **D-PB-5 = A** (hash + metadata + provenance only; no blob or
+  filesystem storage subsystem) are final and owner-ordered. **D-PB-3 = B (final — owner order 2026-09-29): version creation accepts an optional `editionId`; omitted means the current ACTIVE edition; supplied means ACTIVE or ARCHIVED; DRAFT is rejected (`EDITION_NOT_SELECTABLE`); the version's edition binding is immutable; line-add and takeoff transfer use the target version's bound edition; no silent edition switching (no per-line selection in V1.1).**
+  This is a **contract-closure** decision only: NO implementation, no source, no
+  migration, no route, no UI, no test has been made. The contract lives in
+  `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`, superseding the lifecycle
+  sections of `CG-IR-PRICEBOOK-SPEC@0.1.0` (whose verified factual/source record remains
+  authoritative), awaiting a separate execution order.
+- **D-PB-1 = B — one pipeline, no special case for 1404**: the verified staged file seeds
+  `pricebook_editions` through the normal import gate on first boot (idempotent; directly
+  ACTIVE; two seeded audit events, actor = bootstrap admin). Consequence: one lifecycle
+  model, one active-edition invariant, one provenance/audit model; the golden total
+  `69011321.1668` and the 193 pricebook integrity tests must remain exactly unchanged.
+- **D-PB-2 = A — the minimal three-state lifecycle**: DRAFT/ACTIVE/ARCHIVED. The 0.1.0
+  five-status pipeline is superseded for lifecycle purposes (the import gate already
+  refuses errors, four-eyes survives as the activation guard, "withdrawn" = ARCHIVED);
+  the per-step extraction pipeline stays deferred with extraction itself.
+- **D-PB-3 = B (final — owner order 2026-09-29)**: optional `editionId` at version creation; omitted → ACTIVE; supplied → ACTIVE or ARCHIVED; DRAFT rejected; version binding immutable; line-add and transfer use the target version's edition; no silent switching. The repository grounding (version-level irrevocable binding via `EDITION_MISMATCH`, transfer targeting an existing `versionId`, immutable always-loadable editions) makes explicit historical selection architecturally native; the professional driver is that contract estimates and their revisions must price under the contract's edition after a newer annual edition activates. Under every outcome, line-add and transfer resolve against the target version's bound edition — never "whatever is active now" (that would violate `EDITION_MISMATCH` and freeze drafts mid-work).
+- **D-PB-4 = A — the 0-active state is legal**: no artificial guard; deterministic
+  failures (`409 EDITION_NOT_ACTIVE`) for default-selection operations; frozen historical
+  work stays intact; the next activation restores normal operation.
+- **D-PB-5 = A — no source-file storage subsystem**: the edition row stores the source
+  hash and printed metadata; the official artifacts stay in operational custody (the repo
+  `sources/` convention); licensing questions unchanged.
+- **Consequences** (at implementation, under a separate execution order): one new table
+  `pricebook_editions` (12 → 13; migration `0004_p8b_pricebook_editions`; 0000–0003
+  byte-untouched) with a partial unique index enforcing exactly 0-or-1 ACTIVE editions per
+  discipline; one additive `estimate_versions.edition_id` FK (backfilled to
+  `ir-1404-abniye`); five new API routes (#39–#43: list/get/import/activate/archive —
+  38 → 43); three new audit events (`pricebook_edition.imported/.activated/.archived`;
+  catalog 20 → 23; `projectId` null); `data_steward` gains its first grants (CG-GOV §2.1's
+  reserved purpose); historical reproducibility is a HARD invariant — activation/archive
+  must never alter any finalized/approved snapshot, BOQ price, rendered byte or audit row.
+
+> **Current status — P8-B contract CLOSED 2026-09-29; `CG-IR-PRICEBOOK-SPEC@0.2.0` is
+> implementation-ready; implementation NOT started.** D-PB-1 through D-PB-5 are final
+> (D-PB-3 = B, owner order). No source, migration, route, UI, test or dataset change
+> exists for P8-B.
+
 ## Open decisions
 
 - O-1: ~~Exact v1 disciplines (ابنیه only vs. + mechanical/electrical)~~ — resolved

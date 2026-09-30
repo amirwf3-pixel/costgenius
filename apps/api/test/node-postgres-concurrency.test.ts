@@ -177,21 +177,30 @@ describe.skipIf(SMOKE_URL === undefined)('real-server concurrency, rollback, ato
   // Clean slate: the env-gated URL is, by the documented contract of
   // COSTGENIUS_SMOKE_DATABASE_URL, a DISPOSABLE dedicated verification database. These
   // scenarios persist finalized history under deterministic ids, so a re-run against
-  // leftover state must start from an empty store. Only the TWELVE tables this
+  // leftover state must start from an empty store. Only the THIRTEEN tables this
   // application owns (plus the Drizzle migration journal) are touched — the five
   // estimate-family tables of migration 0000, the four takeoff-family tables of
-  // 0001_d016_takeoff and the three governance tables of 0002_p8_governance, children
-  // before parents (P7-S3 repaired the stale five-table drop that failed with 42P07 on
-  // used databases; P8-A S1 extends the list to the current twelve); any other content
-  // of that database is left alone. The migrations are re-applied by openDb().
+  // 0001_d016_takeoff, the three governance tables of 0002_p8_governance and the
+  // pricebook_editions registry of 0004_p8b_pricebook_editions, children before
+  // parents (P7-S3 repaired the stale five-table drop that failed with 42P07 on
+  // used databases; P8-A S1 extended the list to twelve; P8-B S1 adds the thirteenth
+  // table); any other content of that database is left alone. The migrations are re-applied by openDb().
   beforeAll(async () => {
     const url = SMOKE_URL as string;
     const pool = createDbPool(url);
     try {
       await pool.query(
-        'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, estimates, sessions, audit_events, users, projects CASCADE',
+        'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, pricebook_editions, estimates, sessions, audit_events, users, projects CASCADE',
       );
       await pool.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
+      // P8-B S1: migration 0004 also creates TRIGGER FUNCTIONS — unlike tables (and
+      // their triggers) they survive the drop above, so drop them too or the
+      // re-applied migration fails with 42723 (duplicate function) on a database
+      // that has already run it (e.g. after the pricebook suite on the same
+      // disposable database, or a reused verification run).
+      await pool.query(
+        'DROP FUNCTION IF EXISTS pricebook_editions_guard_immutable_columns(), pricebook_editions_forbid_delete(), estimate_versions_guard_edition_binding(), estimate_versions_stamp_active_edition() CASCADE',
+      );
     } finally {
       await pool.end();
     }

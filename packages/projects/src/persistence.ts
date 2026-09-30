@@ -15,6 +15,7 @@
  */
 import { canonicalJson } from '@costgenius/calc-engine';
 import type { Estimate } from '@costgenius/boq';
+import type { PricebookEdition } from '@costgenius/pricebook';
 import type { FinalizedEstimate } from './estimate-calculation.js';
 import type { Project } from './project.js';
 import type { FinalizedTakeoff, TakeoffDocument } from './takeoff-document.js';
@@ -59,6 +60,40 @@ export interface FinalizedEstimateRepository {
    * approval impossible even under concurrency: exactly one racing writer wins.
    */
   approve(versionId: string, approverUserId: string, approvedAt: string): Promise<boolean>;
+}
+
+/**
+ * Persistence contract for pricebook editions (P8-B S1, CG-IR-PRICEBOOK-SPEC@0.2.0
+ * §18). S1 needs exactly these capabilities: identity/content lookups, the single
+ * import write, the active-edition lookup (the default binding source), and the
+ * one-time binding backfill of estimate versions. There is deliberately NO update
+ * and NO delete: content and provenance are immutable from import (§11), lifecycle
+ * transitions (activate/archive) arrive with the S2 routes, and editions are never
+ * removed (§8). The contract references only pure pricebook types — no Drizzle, no
+ * database detail, ever leaks into `@costgenius/pricebook`.
+ */
+export interface PricebookEditionRepository {
+  /** The edition with this exact id, or undefined. */
+  findByEditionId(editionId: string): Promise<PricebookEdition | undefined>;
+  /** The edition with this exact content hash (any status), or undefined — duplicate detection (§5). */
+  findByContentHash(contentHash: string): Promise<PricebookEdition | undefined>;
+  /** The unique ACTIVE edition of a discipline, or undefined when none is active (the 0-active state, §9). */
+  findActiveByDiscipline(discipline: string): Promise<PricebookEdition | undefined>;
+  /**
+   * The single import write (§10): inserts the edition row exactly as given, in the
+   * caller's transaction. Duplicate identity (PK) or duplicate content (UNIQUE
+   * content_hash) surface as the database's unique-violation error — content-addressable
+   * semantics; nothing here updates or merges.
+   */
+  insertEdition(edition: PricebookEdition): Promise<void>;
+  /**
+   * P8-B S1 backfill (§24): establishes the edition binding of estimate-version rows
+   * that have none — exactly the rows whose year label matches the edition's year and
+   * whose `edition_id` is still NULL (all pre-P8-B work is 1404 by construction; a
+   * binding, once set, is immutable and is never reassigned). Returns the number of
+   * rows bound. Runs only after the edition itself exists (the FK never dangles).
+   */
+  backfillVersionEditionBindings(edition: PricebookEdition): Promise<number>;
 }
 
 /** Deterministic in-memory ProjectRepository (reference adapter; no persistence). */

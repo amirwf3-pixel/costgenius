@@ -13,19 +13,23 @@ Browser
 
 The web app is a pure HTTP consumer: no database access, no pricebook dataset, and no
 workspace package in the browser bundle (enforced by ESLint and verified by bundle
-inspection). The official 1404 pricebook dataset is loaded by the API from
-`DATASET_PATH` (in-memory); it is **not** copied into the database.
+inspection). The official 1404 pricebook edition is **persisted** in the
+`pricebook_editions` registry (P8-B S1): a first-boot seed imports the verified staged
+dataset (`DATASET_PATH`) through the normal import gate, directly ACTIVE, and the
+database is the source of truth for editions from then on. The API's row lookup still
+serves from the in-memory published dataset in this stage; edition-aware lookup
+arrives with the later P8-B stages (CG-IR-PRICEBOOK-SPEC@0.2.0).
 
 ## Environment variables (API)
 
-| variable                      | required                    | default                                                    | validation / behavior                                                                                          |
-| ----------------------------- | --------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                | **yes**                     | —                                                          | must be `postgres://` or `postgresql://`; no fallback, no default secret. Startup **fails closed** without it. |
-| `PORT`                        | no                          | `3000`                                                     | must be a valid TCP port.                                                                                      |
-| `HOST`                        | no                          | `0.0.0.0`                                                  | bind address (all interfaces by default — set `HOST=127.0.0.1` to restrict).                                   |
-| `DATASET_PATH`                | no                          | the published 1404 dataset bundled in `packages/pricebook` | path to the published dataset JSON.                                                                            |
-| `CG_BOOTSTRAP_ADMIN_USERNAME` | first boot only (see below) | —                                                          | the initial `org_admin` username (`^[a-z0-9._-]{3,64}$`).                                                      |
-| `CG_BOOTSTRAP_ADMIN_PASSWORD` | first boot only (see below) | —                                                          | the initial `org_admin` password (8–128 characters).                                                           |
+| variable                      | required                    | default                                                          | validation / behavior                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | --------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                | **yes**                     | —                                                                | must be `postgres://` or `postgresql://`; no fallback, no default secret. Startup **fails closed** without it.                                                                                                                                                                                                                                                        |
+| `PORT`                        | no                          | `3000`                                                           | must be a valid TCP port.                                                                                                                                                                                                                                                                                                                                             |
+| `HOST`                        | no                          | `0.0.0.0`                                                        | bind address (all interfaces by default — set `HOST=127.0.0.1` to restrict).                                                                                                                                                                                                                                                                                          |
+| `DATASET_PATH`                | no                          | the verified staged 1404 dataset bundled in `packages/pricebook` | **first-boot seed artifact** (P8-B S1, D-PB-1 = B): the staged-import JSON the pricebook seed validates and persists as the ACTIVE `ir-1404-abniye` edition. Once seeded, the database is the source of truth — changing `DATASET_PATH` never re-seeds, never re-activates and never alters the persisted editions. A file that fails the import gate fails the boot. |
+| `CG_BOOTSTRAP_ADMIN_USERNAME` | first boot only (see below) | —                                                                | the initial `org_admin` username (`^[a-z0-9._-]{3,64}$`).                                                                                                                                                                                                                                                                                                             |
+| `CG_BOOTSTRAP_ADMIN_PASSWORD` | first boot only (see below) | —                                                                | the initial `org_admin` password (8–128 characters).                                                                                                                                                                                                                                                                                                                  |
 
 Web (build time only): `VITE_API_BASE_URL` overrides the API base (default `/api` —
 same-origin). Dev-only: `VITE_API_PROXY_TARGET` (vite dev/preview proxy target).
@@ -40,7 +44,13 @@ Since Phase 8 S1 the API authenticates every request (CG-GOV §1): all routes ex
 A database with **zero users cannot serve any login** — so the first boot is explicit:
 
 1. On an **empty** `users` table the API creates exactly **one** `org_admin` from
-   `CG_BOOTSTRAP_ADMIN_USERNAME` / `CG_BOOTSTRAP_ADMIN_PASSWORD`, then serves.
+   `CG_BOOTSTRAP_ADMIN_USERNAME` / `CG_BOOTSTRAP_ADMIN_PASSWORD`, then seeds the
+   pricebook (P8-B S1): the verified staged 1404 dataset enters `pricebook_editions`
+   through the normal import/validation gate — directly ACTIVE, actor = the bootstrap
+   admin, two seeded audit events, and the historical `estimate_versions.edition_id`
+   bindings backfilled in the same transaction — then serves. The seed is idempotent:
+   every later boot is a no-op, and an edition an operator archived is never
+   re-activated.
 2. On an empty `users` table **without** both variables, startup **fails closed**
    (non-zero exit before listening) — a half-bootstrapped instance never accepts
    requests, and no default credential is ever invented.
@@ -81,7 +91,8 @@ pnpm --filter @costgenius/api start
 ```
 
 Startup order (fail-closed): config validation → connection pool → **Drizzle
-migrations** → listen → `/health`. If the database is unreachable the process exits
+migrations** → bootstrap admin → **pricebook seed** (first boot only) → listen →
+`/health`. If the database is unreachable the process exits
 with an error and never accepts requests. `tsx` is a declared runtime dependency of
 `apps/api` (the service ships TypeScript source; no build step needed for the API).
 
@@ -97,9 +108,15 @@ with an error and never accepts requests. `tsx` is a declared runtime dependency
 
 Applied automatically at startup (`migrateDatabase`, Drizzle journal-based). Fresh
 database → full schema (tables, FKs, unique constraints, indexes, exact `numeric`
-columns, JSONB snapshot columns). Re-running against an already-migrated database is a
-journal-based no-op (idempotent) — verified by the restart leg of the smoke test. No
-seed data is ever inserted; the 1404 pricebook is not a database table.
+columns, JSONB snapshot columns, trigger guards). Re-running against an already-migrated
+database is a journal-based no-op (idempotent) — verified by the restart leg of the smoke
+test. Migrations contain no seed data (pure DDL); the 1404 pricebook edition is seeded at
+BOOT through the normal import gate, never through a migration (D-PB-1 = B). Migration
+`0004_p8b_pricebook_editions` creates the `pricebook_editions` registry (13th table), the
+additive `estimate_versions.edition_id` binding FK, and the database-level guards:
+edition content/provenance immutability and append-only (BEFORE UPDATE/DELETE triggers),
+the immutability of a set version binding, and the ACTIVE-edition stamp on new version
+rows.
 
 ## The application database role (P8-A S3 — append-only)
 
@@ -123,9 +140,26 @@ GRANT USAGE, CREATE ON SCHEMA drizzle TO <app_role>;
 GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO <app_role>;
 -- … everything granted, EXCEPT the audit history (INSERT/SELECT only — append-only):
 REVOKE UPDATE, DELETE ON TABLE audit_events FROM <app_role>;
+-- … and EXCEPT the pricebook edition registry (P8-B S1, CG-IR-PB@0.2.0 §18): the app
+-- role may read and import editions and update ONLY the lifecycle columns:
+REVOKE UPDATE, DELETE ON TABLE pricebook_editions FROM <app_role>;
+GRANT UPDATE (status, activated_by, activated_at, archived_by, archived_at)
+  ON TABLE pricebook_editions TO <app_role>;
 ```
 
 (This is the exact grant sequence the production smoke enforces and verifies.)
+
+**Why the pricebook grants alone are not the whole story (P8-B S1):** PostgreSQL table
+OWNERSHIP bypasses `GRANT`/`REVOKE`, and the documented default deployment runs the API
+as the migrating owner. The contract's implementation gate (CG-IR-PB@0.2.0 §11)
+therefore requires an equivalent enforceable mechanism, and migration 0004 installs it:
+`BEFORE UPDATE` / `BEFORE DELETE` triggers on `pricebook_editions` that refuse every
+change to content, provenance or import identity (and every delete) **for any role,
+including the owner**, while leaving the lifecycle columns writable for the S2
+activate/archive commands. The column-limited grants above are the additional,
+role-scoped layer; the triggers are what makes immutability hold for the owner
+posture too. The same trigger family pins `estimate_versions.edition_id`: a binding
+may be established from NULL exactly once (the seed backfill) and never changed.
 
 Why the two `CREATE` grants do **not** weaken append-only: they allow creating NEW
 objects (a schema, the migration journal table when absent) — the `REVOKE` is at the
@@ -165,10 +199,12 @@ entry** (`src/main.ts`) against it and verifies, over real HTTP:
   an unreachable database each exit non-zero, promptly, with no unhandled-rejection
   noise and without ever listening;
 - startup + migrations on a fresh database, fresh-schema assertions (exactly the
-  twelve tables — the nine domain tables plus `users`, `sessions`, `audit_events` —
-  FKs, unique constraints, indexes, exact `numeric` columns, JSONB snapshot columns,
-  migration journal) and an **empty database** (no seed, the 1404 pricebook is not a
-  DB table);
+  **thirteen tables** — the nine domain tables plus `users`, `sessions`,
+  `audit_events` plus the `pricebook_editions` registry — FKs, unique constraints,
+  indexes, exact `numeric` columns, JSONB snapshot columns, migration journal), an
+  **empty domain store** (no seed DATA) and the **P8-B S1 seed state**: exactly one
+  ACTIVE `ir-1404-abniye` edition row with the pinned content/source hashes and exactly
+  the two seeded audit events;
 - the full workflow (golden chain `69011321.1668`), finalized immutability (409), the
   append-only v2 story with a NULL-price line (total stays NULL, never 0;
   v1's Excel stays byte-identical);
@@ -207,7 +243,9 @@ pnpm --filter @costgenius/api run smoke:production  # production path on real Po
 start` with `DATABASE_URL`, and serve `apps/web/dist` behind a proxy. Every piece of
   that path is what the smoke test exercises natively.
 - Single-process API; horizontal scaling was not in scope and is untested.
-- The dataset path default assumes the bundled 1404 dataset; `DATASET_PATH` overrides it.
+- The dataset path default assumes the bundled verified 1404 staged dataset; `DATASET_PATH`
+  overrides it for the FIRST-BOOT SEED only — once the edition is persisted, the database
+  is the source of truth and the variable no longer affects the persisted editions.
 - Authentication, role-based authorization and the append-only audit trail are
   implemented (Phase-8 S1+S2+S3, CG-GOV §1–§4): local accounts, server-side 12-hour
   sessions, password change, five global roles (`org_admin`, `estimator`, `reviewer`,

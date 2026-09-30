@@ -25,6 +25,7 @@ import type {
   EstimateRepository,
   FinalizedEstimateRepository,
   FinalizedTakeoffRepository,
+  PricebookEditionRepository,
   ProjectRepository,
   SessionStore,
   TakeoffDocumentRepository,
@@ -41,6 +42,8 @@ export interface TransactionalRepositories {
   readonly users: UserStore;
   readonly sessions: SessionStore;
   readonly audit: AuditEventRepository;
+  /** P8-B S1: the edition repository joins the unit of work (the seed's insert + events + backfill). */
+  readonly editions: PricebookEditionRepository;
 }
 
 /** The transaction capability injected into the API (pool-bound reads stay on `repositories`/`governance`). */

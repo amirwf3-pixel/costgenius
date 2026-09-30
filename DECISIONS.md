@@ -528,9 +528,13 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
   must never alter any finalized/approved snapshot, BOQ price, rendered byte or audit row.
 
 > **Current status — P8-B contract CLOSED 2026-09-29; `CG-IR-PRICEBOOK-SPEC@0.2.0` is
-> implementation-ready; implementation NOT started.** D-PB-1 through D-PB-5 are final
-> (D-PB-3 = B, owner order). No source, migration, route, UI, test or dataset change
-> exists for P8-B.
+> the active contract. S1 (edition persistence + 1404 seed) IMPLEMENTED 2026-09-30:
+> migration `0004_p8b_pricebook_editions` (13th table), the immutable
+> `pricebook_editions` registry with database-level guards, the first-boot seed through
+> the normal import gate (directly ACTIVE, bootstrap-admin actor, two seeded audit
+> events), the `estimate_versions.edition_id` binding (backfill + insert-time
+> stamping).** D-PB-1 through D-PB-5 are final (D-PB-3 = B, owner order). The lifecycle
+> routes (#39–43), edition selection and the UI (S2/S3) are NOT implemented.
 
 ## Open decisions
 

@@ -18,6 +18,7 @@ import {
   DrizzleEstimateRepository,
   DrizzleFinalizedEstimateRepository,
   DrizzleFinalizedTakeoffRepository,
+  DrizzlePricebookEditionRepository,
   DrizzleProjectRepository,
   DrizzleSessionRepository,
   DrizzleTakeoffDocumentRepository,
@@ -28,6 +29,7 @@ import {
   createApiServer,
   ensureBootstrapAdmin,
   loadPublishedDataset,
+  seedPricebookEdition,
   transactOver,
 } from '@costgenius/api';
 import { createApiClient } from '../src/api/client.js';
@@ -48,6 +50,7 @@ beforeAll(async () => {
   });
   const db = raw as unknown as DbClient;
   const userStore = new DrizzleUserRepository(db);
+  const editionStore = new DrizzlePricebookEditionRepository(db);
   const sessionStore = new DrizzleSessionRepository(db);
   // P8-A S1: the REAL bootstrap + REAL login; the client then carries the session
   // cookie on every request (in a browser the cookie jar does this — node fetch does
@@ -56,6 +59,15 @@ beforeAll(async () => {
     { users: userStore, sessions: sessionStore, clock: () => FIXED_INSTANT },
     { bootstrapAdminUsername: 'admin', bootstrapAdminPassword: 'test-password-123' },
   );
+  // P8-B S1 (D-PB-1 = B): the first-boot pricebook seed — same boot order as
+  // production (migrations → bootstrap admin → seed → serve); no-op on later boots.
+  const transact = transactOver(db);
+  await seedPricebookEdition({
+    users: userStore,
+    editions: editionStore,
+    transact,
+    clock: () => FIXED_INSTANT,
+  });
   app = createApiServer({
     repositories: {
       projects: new DrizzleProjectRepository(db),
@@ -63,6 +75,7 @@ beforeAll(async () => {
       finalized: new DrizzleFinalizedEstimateRepository(db),
       takeoffDocuments: new DrizzleTakeoffDocumentRepository(db),
       finalizedTakeoffs: new DrizzleFinalizedTakeoffRepository(db),
+      editions: editionStore,
     },
     governance: {
       users: userStore,
@@ -72,7 +85,7 @@ beforeAll(async () => {
     dataset: loadPublishedDataset(),
     clock: () => FIXED_INSTANT,
     // S3: the audited mutations run on ONE transaction (the canonical factory).
-    transact: transactOver(db),
+    transact,
   });
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();

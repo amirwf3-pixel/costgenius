@@ -13,8 +13,8 @@ describe('migrations', () => {
     const tables = await pg.query<{ tablename: string }>(
       "select tablename from pg_tables where schemaname = 'public' order by tablename",
     );
-    // P8-A S1 (migration 0002_p8_governance): the three governance tables join the
-    // nine Phase-14/D-016 domain tables — twelve in total.
+    // P8-B S1 (migration 0004_p8b_pricebook_editions): the edition registry joins the
+    // twelve Phase-14/D-016/governance tables — thirteen in total.
     expect(tables.rows.map((r) => r.tablename)).toEqual([
       'audit_events',
       'boq_lines',
@@ -22,6 +22,7 @@ describe('migrations', () => {
       'estimates',
       'finalized_estimates',
       'finalized_takeoffs',
+      'pricebook_editions',
       'projects',
       'sessions',
       'takeoff_documents',
@@ -86,9 +87,12 @@ describe('migrations', () => {
         // comment lines are documentation, not statements — strip before matching
         const codeOnly = stmt.replace(/^--.*$/gm, '').trim();
         // P8-A S1: REVOKE (access-control DDL, CG-GOV §4.2/§7 — the append-only
-        // defense of audit_events) is the one documented non-CREATE statement form.
+        // defense of audit_events) is a documented non-CREATE statement form.
+        // P8-B S1: CREATE FUNCTION / CREATE TRIGGER (migration 0004) are the
+        // database-level immutability + binding guards of CG-IR-PRICEBOOK-SPEC@0.2.0
+        // §11/§12 — pure DDL, no data, enforced for every role including the owner.
         expect(codeOnly).toMatch(
-          /^(CREATE TABLE|ALTER TABLE|CREATE (UNIQUE )?INDEX|REVOKE UPDATE, DELETE)/,
+          /^(CREATE TABLE|ALTER TABLE|CREATE (UNIQUE )?INDEX|REVOKE UPDATE, DELETE|CREATE (OR REPLACE )?FUNCTION|CREATE TRIGGER)/,
         );
       }
       expect(sql).not.toMatch(/\bINSERT\s+INTO\b|\bCREATE\s+ROLE\b|\bCREATE\s+USER\b/i); // no data, no users

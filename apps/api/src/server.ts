@@ -24,6 +24,7 @@ import type {
   FinalizedEstimateRepository,
   FinalizedTakeoff,
   FinalizedTakeoffRepository,
+  PricebookEditionRepository,
   ProjectRepository,
   TakeoffDocument,
   TakeoffDocumentLine,
@@ -156,6 +157,12 @@ export interface ApiDependencies {
     readonly finalized: FinalizedEstimateRepository;
     readonly takeoffDocuments: TakeoffDocumentRepository;
     readonly finalizedTakeoffs: FinalizedTakeoffRepository;
+    /**
+     * P8-B S1: the pricebook-edition registry (CG-IR-PRICEBOOK-SPEC@0.2.0 §18). No S1
+     * route consumes it yet (the lifecycle API is S2); the first-boot seed and the
+     * S2/S3 edition work bind through here.
+     */
+    readonly editions: PricebookEditionRepository;
   };
   /**
    * Governance stores (P8-A S1, CG-GOV@0.1.0): authentication/session identity ONLY —

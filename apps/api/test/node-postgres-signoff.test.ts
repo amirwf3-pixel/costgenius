@@ -25,7 +25,12 @@ import {
   migrateDatabase,
   type DbClient,
 } from '@costgenius/db';
-import { createApiServer, ensureBootstrapAdmin, loadPublishedDataset } from '../src/index.js';
+import {
+  createApiServer,
+  ensureBootstrapAdmin,
+  loadPublishedDataset,
+  seedPricebookEdition,
+} from '../src/index.js';
 import {
   bindRepositories,
   GOLDEN_COEFFICIENTS,
@@ -66,6 +71,14 @@ describe.skipIf(SMOKE_URL === undefined)('S4 sign-off concurrency (real PostgreS
       { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
     );
     const poolBound = bindRepositories(db);
+    // P8-B S1 (D-PB-1 = B): the first-boot pricebook seed — same boot order as
+    // production; a no-op on the reused disposable database of a later run.
+    await seedPricebookEdition({
+      users: userStore,
+      editions: poolBound.editions,
+      transact: transactOver(db),
+      clock: () => INSTANT,
+    });
     app = createApiServer({
       repositories: {
         projects: poolBound.projects,
@@ -73,6 +86,7 @@ describe.skipIf(SMOKE_URL === undefined)('S4 sign-off concurrency (real PostgreS
         finalized: poolBound.finalized,
         takeoffDocuments: poolBound.takeoffDocuments,
         finalizedTakeoffs: poolBound.finalizedTakeoffs,
+        editions: poolBound.editions,
       },
       governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
       dataset: loadPublishedDataset(),

@@ -5,7 +5,12 @@ import { migrate } from 'drizzle-orm/pglite/migrator';
 import type { UserRole, UserStore } from '@costgenius/projects';
 import { type DbClient } from '@costgenius/db';
 import { bindRepositories, transactOver } from '../src/composition.js';
-import { createApiServer, ensureBootstrapAdmin, type ApiDependencies } from '../src/index.js';
+import {
+  createApiServer,
+  ensureBootstrapAdmin,
+  seedPricebookEdition,
+  type ApiDependencies,
+} from '../src/index.js';
 import { loadPublishedDataset } from '../src/dataset.js';
 import { hashPassword } from '../src/auth.js';
 
@@ -59,6 +64,7 @@ async function buildPgliteDependencies(): Promise<{
       finalized: poolBound.finalized,
       takeoffDocuments: poolBound.takeoffDocuments,
       finalizedTakeoffs: poolBound.finalizedTakeoffs,
+      editions: poolBound.editions,
     },
     governance: {
       users: poolBound.users,
@@ -129,6 +135,12 @@ export async function buildAuthenticatedTestServer(): Promise<AuthenticatedTestS
     { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
     { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
   );
+  await seedPricebookEdition({
+    users: deps.governance.users,
+    editions: deps.repositories.editions,
+    transact: deps.transact,
+    clock: deps.clock,
+  });
   return attachAuthenticatedServer(createApiServer(deps));
 }
 
@@ -207,6 +219,12 @@ export async function buildRoleAwareServer(): Promise<RoleAwareServer> {
     { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
     { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
   );
+  await seedPricebookEdition({
+    users: deps.governance.users,
+    editions: deps.repositories.editions,
+    transact: deps.transact,
+    clock: deps.clock,
+  });
   await ensureTestRoleUsers(deps.governance.users);
   const app = createApiServer(deps);
   const cache = new Map<string, string>();
@@ -274,6 +292,12 @@ export async function buildAuditAwareServer(): Promise<AuditAwareServer> {
     { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
     { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
   );
+  await seedPricebookEdition({
+    users: deps.governance.users,
+    editions: deps.repositories.editions,
+    transact: deps.transact,
+    clock: deps.clock,
+  });
   await ensureTestRoleUsers(deps.governance.users);
   const app = createApiServer(deps);
   const cache = new Map<string, string>();
@@ -311,6 +335,12 @@ export async function buildServerWithClosableDatabase(): Promise<DatabaseBackedS
     { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
     { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
   );
+  await seedPricebookEdition({
+    users: deps.governance.users,
+    editions: deps.repositories.editions,
+    transact: deps.transact,
+    clock: deps.clock,
+  });
   const { app } = await attachAuthenticatedServer(createApiServer(deps));
   return { app, closeDatabase: () => pg.close() };
 }

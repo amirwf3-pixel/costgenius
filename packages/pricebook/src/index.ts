@@ -51,6 +51,15 @@ export {
 } from './verified-coefficient-facts.js';
 export { canonicalJson } from './canonical-json.js';
 export {
+  canonicalContentOf,
+  contentHashOf,
+  isEditionStatus,
+  PRICEBOOK_EDITION_STATUSES,
+  type CanonicalEditionContent,
+  type EditionStatus,
+  type PricebookEdition,
+} from './edition.js';
+export {
   ImportValidationError,
   publishStagedImport,
   validateStagedImport,

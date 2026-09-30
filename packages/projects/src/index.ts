@@ -115,6 +115,7 @@ export {
   type EstimateRepository,
   type FinalizedEstimateRepository,
   type FinalizedTakeoffRepository,
+  type PricebookEditionRepository,
   type ProjectRepository,
   type TakeoffDocumentRepository,
 } from './persistence.js';
@@ -141,6 +142,8 @@ export {
   estimateVersionApproved,
   estimateVersionCreated,
   estimateVersionFinalized,
+  pricebookEditionActivated,
+  pricebookEditionImported,
   projectCreated,
   takeoffDocumentApproved,
   takeoffDocumentArchived,

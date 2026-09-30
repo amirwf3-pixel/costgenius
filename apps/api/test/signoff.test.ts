@@ -492,6 +492,7 @@ describe('P8-A S4 — estimate sign-off (CG-GOV §5, #37)', () => {
         finalized: poolBound.finalized,
         takeoffDocuments: poolBound.takeoffDocuments,
         finalizedTakeoffs: poolBound.finalizedTakeoffs,
+        editions: poolBound.editions,
       },
       governance: { users: poolBound.users, sessions: poolBound.sessions, audit: poolBound.audit },
       dataset: loadPublishedDataset(),

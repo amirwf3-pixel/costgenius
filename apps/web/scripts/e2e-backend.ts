@@ -19,6 +19,7 @@ import {
   DrizzleEstimateRepository,
   DrizzleFinalizedEstimateRepository,
   DrizzleFinalizedTakeoffRepository,
+  DrizzlePricebookEditionRepository,
   DrizzleProjectRepository,
   DrizzleSessionRepository,
   DrizzleTakeoffDocumentRepository,
@@ -29,6 +30,7 @@ import {
   createApiServer,
   ensureBootstrapAdmin,
   loadPublishedDataset,
+  seedPricebookEdition,
   transactOver,
 } from '@costgenius/api';
 
@@ -42,6 +44,7 @@ await migrate(raw, {
 const db = raw as unknown as DbClient;
 
 const userStore = new DrizzleUserRepository(db);
+const editionStore = new DrizzlePricebookEditionRepository(db);
 const sessionStore = new DrizzleSessionRepository(db);
 // P8-A S1 (CG-GOV §1.5): bootstrap exactly one admin on the empty users table, from
 // the environment (the Playwright global setup passes deterministic E2E credentials).
@@ -53,6 +56,16 @@ await ensureBootstrapAdmin(
   },
 );
 
+// P8-B S1 (D-PB-1 = B): the first-boot pricebook seed — same stack as production
+// (migrations → bootstrap admin → seed → serve); a no-op on every later boot.
+const transact = transactOver(db);
+
+await seedPricebookEdition({
+  users: userStore,
+  editions: editionStore,
+  transact,
+  clock: () => new Date().toISOString(),
+});
 const app = createApiServer({
   repositories: {
     projects: new DrizzleProjectRepository(db),
@@ -60,6 +73,7 @@ const app = createApiServer({
     finalized: new DrizzleFinalizedEstimateRepository(db),
     takeoffDocuments: new DrizzleTakeoffDocumentRepository(db),
     finalizedTakeoffs: new DrizzleFinalizedTakeoffRepository(db),
+    editions: editionStore,
   },
   governance: {
     users: userStore,
@@ -69,11 +83,13 @@ const app = createApiServer({
   dataset: loadPublishedDataset(),
   clock: () => new Date().toISOString(),
   // S3: the audited mutations run on ONE transaction (the canonical factory).
-  transact: transactOver(db),
+  transact,
 });
 
 await app.listen({ port: PORT, host: '127.0.0.1' });
-console.log(`[e2e-backend] real API on http://127.0.0.1:${String(PORT)} (PGlite, fresh, no seed)`);
+console.log(
+  `[e2e-backend] real API on http://127.0.0.1:${String(PORT)} (PGlite, fresh; pricebook edition seeded, no demo data)`,
+);
 
 const shutdown = (): void => {
   void app

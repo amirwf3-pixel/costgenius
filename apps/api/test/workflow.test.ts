@@ -341,6 +341,7 @@ describe.skipIf(SMOKE === undefined)('production workflow on a REAL PostgreSQL s
         finalized: poolBound.finalized,
         takeoffDocuments: poolBound.takeoffDocuments,
         finalizedTakeoffs: poolBound.finalizedTakeoffs,
+        editions: poolBound.editions,
       },
       governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
       dataset: loadPublishedDataset(),

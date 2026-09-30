@@ -11,11 +11,12 @@
  * stamped by the API boundary (injected clock, fresh UUID) exactly like every other
  * domain identity.
  *
- * The catalog is EXACTLY §4.3 + §4.4 — no additional actions, no renames, no generic
- * request/route events. The two approval events (`estimate_version.approved`,
- * `takeoff_document.approved`) belong to the S4 sign-off stage: their builders exist
- * so the writer contract is complete, but NO route reaches them until S4 — nothing
- * here invents an approval operation.
+ * The catalog is EXACTLY §4.3 + §4.4 (plus the two P8-B edition events of
+ * CG-IR-PRICEBOOK-SPEC@0.2.0 §16 that P8-B S1 persistence makes reachable) — no
+ * additional actions, no renames, no generic request/route events. The two approval
+ * events (`estimate_version.approved`, `takeoff_document.approved`) belong to the S4
+ * sign-off stage: their builders exist so the writer contract is complete, but NO
+ * route reaches them until S4 — nothing here invents an approval operation.
  *
  * Governance-event resources (§4.4 names no resource columns): the affected resource
  * of every user-management event is the TARGET user, and of every auth event the
@@ -25,6 +26,7 @@
  * null for every governance event (they are not project resources).
  */
 import type { Estimate, EstimateVersion } from '@costgenius/boq';
+import type { PricebookEdition } from '@costgenius/pricebook';
 import type { FinalizedEstimate } from './estimate-calculation.js';
 import type { Project } from './project.js';
 import type { FinalizedTakeoff, TakeoffDocument } from './takeoff-document.js';
@@ -36,7 +38,7 @@ export interface Actor {
   readonly username: string;
 }
 
-/** The complete audit action catalog (CG-GOV §4.3 + §4.4) — exactly these twenty, nothing else. */
+/** The complete audit action catalog (CG-GOV §4.3 + §4.4, plus CG-IR-PB@0.2.0 §16) — exactly these, nothing else. */
 export type AuditAction =
   | 'project.created'
   | 'estimate.created'
@@ -57,11 +59,14 @@ export type AuditAction =
   | 'auth.password_changed'
   | 'user.created'
   | 'user.role_changed'
-  | 'user.deactivated';
+  | 'user.deactivated'
+  | 'pricebook_edition.imported'
+  | 'pricebook_edition.activated';
 
-/** The resource kinds of the catalog: the §4.3 domain resources plus the governance user. */
+/** The resource kinds of the catalog: the §4.3 domain resources, the governance user and
+ *  (P8-B, CG-IR-PB@0.2.0 §16) the pricebook edition. */
 export type AuditResourceType =
-  'project' | 'estimate' | 'estimate_version' | 'takeoff_document' | 'user';
+  'project' | 'estimate' | 'estimate_version' | 'takeoff_document' | 'user' | 'pricebook_edition';
 
 /** The append payload (§4.1 minus the boundary-stamped `eventId`/`at`). */
 export interface AuditEventSpec {
@@ -342,6 +347,63 @@ export function takeoffDocumentApproved(
     documentId,
     projectId,
     {},
+  );
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Pricebook-edition events (CG-IR-PRICEBOOK-SPEC@0.2.0 §16 — P8-B). `projectId` is null
+ * on both (editions are not project-scoped). S1 persists editions and seeds 1404, so
+ * exactly these two actions are reachable today — through the seed (details carry
+ * `seeded: true`). The third catalog entry of §16, `pricebook_edition.archived`, joins
+ * with the S2 lifecycle routes; deliberately NOT added before a writer exists.
+ * -----------------------------------------------------------------------------------------------*/
+
+/**
+ * `pricebook_edition.imported` — resource: the imported edition; details:
+ * `{contentHash, rowCount, warningCount}`; the seed of §24 adds `seeded: true`.
+ */
+export function pricebookEditionImported(
+  actor: Actor,
+  edition: PricebookEdition,
+  seeded = false,
+): AuditEventSpec {
+  return domainEvent(
+    actor,
+    'pricebook_edition.imported',
+    'pricebook_edition',
+    edition.editionId,
+    null,
+    {
+      contentHash: edition.contentHash,
+      rowCount: edition.importReport.rowCount,
+      warningCount: edition.importReport.warningCount,
+      ...(seeded ? { seeded: true } : {}),
+    },
+  );
+}
+
+/**
+ * `pricebook_edition.activated` — resource: the activated edition; details:
+ * `{contentHash, supersededEditionId}` (null when there was no previous active edition);
+ * the seed of §24 adds `seeded: true`.
+ */
+export function pricebookEditionActivated(
+  actor: Actor,
+  edition: PricebookEdition,
+  supersededEditionId: string | null,
+  seeded = false,
+): AuditEventSpec {
+  return domainEvent(
+    actor,
+    'pricebook_edition.activated',
+    'pricebook_edition',
+    edition.editionId,
+    null,
+    {
+      contentHash: edition.contentHash,
+      supersededEditionId,
+      ...(seeded ? { seeded: true } : {}),
+    },
   );
 }
 

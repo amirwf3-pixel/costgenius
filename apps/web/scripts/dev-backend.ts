@@ -21,6 +21,7 @@ import {
   DrizzleEstimateRepository,
   DrizzleFinalizedEstimateRepository,
   DrizzleFinalizedTakeoffRepository,
+  DrizzlePricebookEditionRepository,
   DrizzleProjectRepository,
   DrizzleSessionRepository,
   DrizzleTakeoffDocumentRepository,
@@ -31,6 +32,7 @@ import {
   createApiServer,
   ensureBootstrapAdmin,
   loadPublishedDataset,
+  seedPricebookEdition,
   transactOver,
 } from '@costgenius/api';
 
@@ -44,6 +46,7 @@ await migrate(raw, {
 const db = raw as unknown as DbClient;
 
 const userStore = new DrizzleUserRepository(db);
+const editionStore = new DrizzlePricebookEditionRepository(db);
 const sessionStore = new DrizzleSessionRepository(db);
 
 // P8-A S1: DEVELOPMENT-ONLY bootstrap credentials (never a production secret — this
@@ -58,6 +61,16 @@ await ensureBootstrapAdmin(
   },
 );
 
+// P8-B S1 (D-PB-1 = B): the first-boot pricebook seed — same stack as production
+// (migrations → bootstrap admin → seed → serve); a no-op on every later boot.
+const transact = transactOver(db);
+
+await seedPricebookEdition({
+  users: userStore,
+  editions: editionStore,
+  transact,
+  clock: () => new Date().toISOString(),
+});
 const app = createApiServer({
   repositories: {
     projects: new DrizzleProjectRepository(db),
@@ -65,6 +78,7 @@ const app = createApiServer({
     finalized: new DrizzleFinalizedEstimateRepository(db),
     takeoffDocuments: new DrizzleTakeoffDocumentRepository(db),
     finalizedTakeoffs: new DrizzleFinalizedTakeoffRepository(db),
+    editions: editionStore,
   },
   governance: {
     users: userStore,
@@ -75,7 +89,7 @@ const app = createApiServer({
   // dev process: real wall clock (the production API injects its clock; see §clock)
   clock: () => new Date().toISOString(),
   // S3: the audited mutations run on ONE transaction (the canonical factory).
-  transact: transactOver(db),
+  transact,
 });
 
 await app.listen({ port: PORT, host: '127.0.0.1' });

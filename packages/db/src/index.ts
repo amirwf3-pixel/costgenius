@@ -29,6 +29,7 @@ export {
   users,
   sessions,
   auditEvents,
+  pricebookEditions,
 } from './schema/index.js';
 export { DrizzleProjectRepository } from './repositories/project-repository.js';
 export { DrizzleEstimateRepository } from './repositories/estimate-repository.js';
@@ -37,3 +38,4 @@ export { DrizzleTakeoffDocumentRepository } from './repositories/takeoff-reposit
 export { DrizzleFinalizedTakeoffRepository } from './repositories/takeoff-repository.js';
 export { DrizzleSessionRepository, DrizzleUserRepository } from './repositories/user-repository.js';
 export { DrizzleAuditEventRepository } from './repositories/audit-repository.js';
+export { DrizzlePricebookEditionRepository } from './repositories/pricebook-edition-repository.js';

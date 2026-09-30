@@ -26,12 +26,19 @@
  *     four-eyes/RBAC/non-finalized/already-approved denials write nothing; the frozen
  *     snapshots and rendered bytes stay byte-identical; the approval state and its
  *     events survive the restart
+ *   → P8-B S1: the pricebook seed — the verified 1404 edition enters pricebook_editions
+ *     through the normal import gate, directly ACTIVE, with the bootstrap admin as
+ *     actor; the restart re-seeds NOTHING; every workflow version is bound to the
+ *     seeded edition at insert; the restricted app role is denied edition content/
+ *     provenance UPDATE and DELETE (42501) while the lifecycle columns stay writable
  *   → restart (migrations re-run idempotently; data persists)
- *   → schema assertions on the fresh database (exactly the TWELVE S1 tables — the
- *     nine domain tables plus users/sessions/audit_events — FKs, uniques, indexes,
- *     numeric precision, JSONB snapshots, migration journal; and ZERO domain rows
- *     before the workflow — no seed data, the 1404 pricebook is NOT copied into the
- *     database; the ONLY user is the bootstrap admin)
+ *   → schema assertions on the fresh database (exactly the THIRTEEN tables — the
+ *     nine domain tables plus users/sessions/audit_events plus pricebook_editions —
+ *     FKs, uniques, indexes, numeric precision, JSONB snapshots, migration journal;
+ *     and ZERO domain rows before the workflow — no seed DATA, while the P8-B S1
+ *     first-boot seed HAS established the one ACTIVE ir-1404-abniye edition row with
+ *     its pinned contentHash/sourceFileHash and exactly two seeded audit events; the
+ *     ONLY user is the bootstrap admin)
  *
  * It also proves (Release Audit §18/§20/§21):
  *   - fail-closed startup in a clean environment: missing DATABASE_URL, malformed
@@ -696,8 +703,8 @@ async function assertSchema(pool: Pool): Promise<void> {
   );
   const names = tables.rows.map((r) => r.table_name);
   check(
-    'schema creates exactly the twelve S1 tables (nine domain + users/sessions/audit_events; no pricebook table)',
-    names.length === 12 &&
+    'schema creates exactly the thirteen tables (nine domain + users/sessions/audit_events + pricebook_editions)',
+    names.length === 13 &&
       [
         'audit_events',
         'boq_lines',
@@ -705,6 +712,7 @@ async function assertSchema(pool: Pool): Promise<void> {
         'estimate_versions',
         'finalized_estimates',
         'finalized_takeoffs',
+        'pricebook_editions',
         'projects',
         'sessions',
         'takeoff_documents',
@@ -878,17 +886,59 @@ async function main(): Promise<void> {
       'SELECT (SELECT count(*) FROM projects) + (SELECT count(*) FROM estimates) + (SELECT count(*) FROM estimate_versions) + (SELECT count(*) FROM boq_lines) + (SELECT count(*) FROM finalized_estimates) + (SELECT count(*) FROM takeoff_documents) + (SELECT count(*) FROM takeoff_sheets) + (SELECT count(*) FROM takeoff_lines) + (SELECT count(*) FROM finalized_takeoffs) AS total',
     );
     check(
-      'no seed data — the fresh database is empty (the 1404 pricebook is NOT a DB table)',
+      'no seed DATA — the domain tables are empty (the pricebook edition is registry data, not workflow data)',
       Number(rows.rows[0]?.total ?? '-1') === 0,
+    );
+    // P8-B S1 (D-PB-1 = B): the first-boot seed — the ONE edition row, with pinned identity
+    const edition = await pool.query<{
+      edition_id: string;
+      status: string;
+      discipline: string;
+      content_hash: string;
+      source_file_hash: string;
+      row_count: number;
+      import_ok: boolean;
+    }>(
+      `SELECT edition_id, status, discipline, content_hash, source_file_hash,
+              (import_report->>'rowCount')::int AS row_count,
+              (import_report->>'ok')::boolean AS import_ok
+       FROM pricebook_editions`,
+    );
+    const ed = edition.rows[0];
+    check(
+      'the pricebook seed established exactly ONE edition row: ir-1404-abniye, ACTIVE, pinned hashes',
+      edition.rows.length === 1 &&
+        ed !== undefined &&
+        ed.edition_id === 'ir-1404-abniye' &&
+        ed.status === 'ACTIVE' &&
+        ed.discipline === 'abniye' &&
+        ed.content_hash === 'a669ddd4c315ee26fda6e43cff56eeac05cc03178ed8a665a13f49ff814de786' &&
+        ed.source_file_hash ===
+          'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f' &&
+        ed.row_count === 1564 &&
+        ed.import_ok,
+      JSON.stringify(edition.rows),
     );
     const governance = await pool.query<{ users: string; sessions: string; audit_events: string }>(
       'SELECT (SELECT count(*) FROM users) AS users, (SELECT count(*) FROM sessions) AS sessions, (SELECT count(*) FROM audit_events) AS audit_events',
     );
     const gov = governance.rows[0];
     check(
-      'bootstrap created exactly ONE org_admin; no sessions yet; audit_events empty (bootstrap is NOT an audit event)',
-      gov !== undefined && gov.users === '1' && gov.sessions === '0' && gov.audit_events === '0',
+      'bootstrap created exactly ONE org_admin; no sessions yet; exactly the TWO seeded pricebook events',
+      gov !== undefined && gov.users === '1' && gov.sessions === '0' && gov.audit_events === '2',
       JSON.stringify(gov ?? {}),
+    );
+    const seedEvents = await pool.query<{ action: string; seeded: boolean; actor: string | null }>(
+      `SELECT action, (details->>'seeded')::boolean AS seeded, actor_user_id AS actor
+       FROM audit_events WHERE action LIKE 'pricebook_edition.%' ORDER BY action`,
+    );
+    check(
+      'the seed events are pricebook_edition.imported + .activated, seeded=true, actor = the bootstrap admin',
+      seedEvents.rows.length === 2 &&
+        seedEvents.rows[0]?.action === 'pricebook_edition.activated' &&
+        seedEvents.rows[1]?.action === 'pricebook_edition.imported' &&
+        seedEvents.rows.every((r) => r.seeded && r.actor !== null),
+      JSON.stringify(seedEvents.rows),
     );
     const passwordNeverStored = await pool.query<{ password_hash: string }>(
       'SELECT password_hash FROM users WHERE username = $1',
@@ -1477,6 +1527,13 @@ async function main(): Promise<void> {
     // journal table itself stays owned by the migration role.)
     // the runbook's append-only line — everything granted, except audit history
     await pool.query(`REVOKE UPDATE, DELETE ON TABLE audit_events FROM ${APP_ROLE}`);
+    // … and the P8-B S1 edition-immutability line (CG-IR-PB@0.2.0 §18): the app role may
+    // read and import editions and update ONLY the lifecycle columns — never content,
+    // provenance or rows (the migration's trigger guards bind the owner as well)
+    await pool.query(`REVOKE UPDATE, DELETE ON TABLE pricebook_editions FROM ${APP_ROLE}`);
+    await pool.query(
+      `GRANT UPDATE (status, activated_by, activated_at, archived_by, archived_at) ON TABLE pricebook_editions TO ${APP_ROLE}`,
+    );
     const appRoleUrl = `postgres://${APP_ROLE}:${APP_ROLE_PASSWORD}@127.0.0.1:${String(PG_PORT)}/costgenius_smoke`;
 
     console.log('[smoke] restarting the API AS THE RESTRICTED APP ROLE (append-only binds)…');
@@ -1535,6 +1592,42 @@ async function main(): Promise<void> {
       'finalized data persisted across restart',
       persisted.status === 200 &&
         typeof (persisted.data as { finalizedAt?: string }).finalizedAt === 'string',
+    );
+    // P8-B S1 — the restart re-ran the boot seed path as a NO-OP: still exactly ONE
+    // edition row, still ACTIVE, and no new seed events (idempotency on restart)
+    const editionAfterRestart = await pool.query<{ n: string; status: string; events: string }>(
+      `SELECT (SELECT count(*)::text FROM pricebook_editions) AS n,
+              (SELECT status FROM pricebook_editions WHERE edition_id = 'ir-1404-abniye') AS status,
+              (SELECT count(*)::text FROM audit_events WHERE action LIKE 'pricebook_edition.%') AS events`,
+    );
+    const restartEditionState = editionAfterRestart.rows[0];
+    check(
+      'P8-B S1: the restart re-seeded NOTHING (one edition row, still ACTIVE, still exactly two seed events)',
+      restartEditionState !== undefined &&
+        restartEditionState.n === '1' &&
+        restartEditionState.status === 'ACTIVE' &&
+        restartEditionState.events === '2',
+      JSON.stringify(restartEditionState ?? {}),
+    );
+    // every version of the workflow carries the seeded edition binding; the year label is untouched
+    const bindings = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM estimate_versions WHERE edition_id = 'ir-1404-abniye'`,
+    );
+    const allVersions = await pool.query<{ n: string }>(
+      'SELECT count(*)::text AS n FROM estimate_versions',
+    );
+    check(
+      'P8-B S1: every estimate version is bound to ir-1404-abniye (stamped at insert)',
+      bindings.rows[0]?.n === allVersions.rows[0]?.n && allVersions.rows[0]?.n !== '0',
+      `bound=${bindings.rows[0]?.n ?? 'none'} total=${allVersions.rows[0]?.n ?? 'none'}`,
+    );
+    const yearLabels = await pool.query<{ distinct: string }>(
+      `SELECT DISTINCT edition AS distinct FROM estimate_versions`,
+    );
+    check(
+      'P8-B S1: the edition year-label column still carries exactly "1404" (bytes unchanged)',
+      yearLabels.rows.length === 1 && yearLabels.rows[0]?.distinct === '1404',
+      JSON.stringify(yearLabels.rows),
     );
     const excel = await authFetch(`/estimate-versions/${first.versionId}/render/excel`);
     const excelBuf = Buffer.from(await excel.arrayBuffer());
@@ -1670,6 +1763,57 @@ async function main(): Promise<void> {
         'audit DELETE is DENIED for the application role (PostgreSQL 42501)',
         tamperDelete === '42501',
         `code=${tamperDelete}`,
+      );
+      // P8-B S1 — the edition registry under the same restricted role
+      const editionContentUpdate = await appPool
+        .query(`UPDATE pricebook_editions SET title = 'forged' WHERE edition_id = 'ir-1404-abniye'`)
+        .then(() => 'unexpectedly-allowed', pgErrorCode);
+      check(
+        'P8-B S1: edition content UPDATE is DENIED for the application role (42501)',
+        editionContentUpdate === '42501',
+        `code=${editionContentUpdate}`,
+      );
+      const editionHashUpdate = await appPool
+        .query(
+          `UPDATE pricebook_editions SET content_hash = 'forged' WHERE edition_id = 'ir-1404-abniye'`,
+        )
+        .then(() => 'unexpectedly-allowed', pgErrorCode);
+      check(
+        'P8-B S1: edition provenance UPDATE is DENIED for the application role (42501)',
+        editionHashUpdate === '42501',
+        `code=${editionHashUpdate}`,
+      );
+      const editionDelete = await appPool
+        .query('DELETE FROM pricebook_editions')
+        .then(() => 'unexpectedly-allowed', pgErrorCode);
+      check(
+        'P8-B S1: edition DELETE is DENIED for the application role (42501)',
+        editionDelete === '42501',
+        `code=${editionDelete}`,
+      );
+      // the lifecycle columns stay writable for the (future) S2 routes, and the INSERT
+      // grant exists (the import path): a duplicate id reaches the PK constraint (23505),
+      // never a privilege denial
+      const lifecycleTouch = await appPool
+        .query(`UPDATE pricebook_editions SET status = status WHERE edition_id = 'ir-1404-abniye'`)
+        .then(() => 'unexpectedly-allowed', pgErrorCode);
+      check(
+        'P8-B S1: edition lifecycle columns stay WRITABLE for the application role',
+        lifecycleTouch === 'unexpectedly-allowed',
+        `code=${lifecycleTouch}`,
+      );
+      const duplicateInsert = await appPool
+        .query(
+          `INSERT INTO pricebook_editions (edition_id, discipline, year, title, organization,
+             source_file_hash, content_hash, content, import_report, status, imported_by, imported_at)
+           VALUES ('ir-1404-abniye', 'abniye', '1404', 'x', 'x', 'x', 'x', '{}'::jsonb,
+             '{}'::jsonb, 'DRAFT', (SELECT user_id FROM users LIMIT 1), '2026-01-01T00:00:00Z')`,
+        )
+        .then(() => 'unexpectedly-allowed', pgErrorCode);
+      check(
+        'P8-B S1: edition INSERT is permitted for the application role (duplicate id → 23505, not 42501)',
+        duplicateInsert === '23505',
+        `code=${duplicateInsert}`,
       );
     } finally {
       await appPool.end();

@@ -26,7 +26,8 @@ export {
   type ComposedApi,
 } from './composition.js';
 export { readApiConfig, type ApiConfig } from './config.js';
-export { loadPublishedDataset } from './dataset.js';
+export { DEFAULT_DATASET_PATH, loadPublishedDataset } from './dataset.js';
+export { seedPricebookEdition, type PricebookSeedDependencies } from './pricebook-seed.js';
 export { mapError, notFound, type ApiErrorBody, type ApiErrorMapping } from './errors.js';
 export {
   AuthError,
@@ -44,6 +45,7 @@ import type { ApiDependencies } from './server.js';
 import { buildDependencies } from './composition.js';
 import { readApiConfig } from './config.js';
 import type { ApiConfig } from './config.js';
+import { seedPricebookEdition } from './pricebook-seed.js';
 
 /** A running production API: the listening app plus the dependencies it was built from. */
 export interface RunningApi {
@@ -58,10 +60,12 @@ export interface RunningApi {
 }
 
 /**
- * Starts the production API: config → pool → migrations → bootstrap → listen.
- * Startup fails closed (the promise rejects) when the database is unreachable or —
- * P8-A S1 (CG-GOV §1.5) — when the users table is empty and no bootstrap admin
- * credentials are configured: a half-started process never accepts requests.
+ * Starts the production API: config → pool → migrations → bootstrap → pricebook seed
+ * → listen. Startup fails closed (the promise rejects) when the database is
+ * unreachable, when — P8-A S1 (CG-GOV §1.5) — the users table is empty and no
+ * bootstrap admin credentials are configured, or when — P8-B S1 (D-PB-1 = B) — the
+ * verified staged 1404 dataset fails the import gate at seed time: a half-started
+ * process never accepts requests.
  */
 export async function startApi(config: ApiConfig): Promise<RunningApi> {
   const { dependencies, close } = await buildDependencies(config);
@@ -78,6 +82,17 @@ export async function startApi(config: ApiConfig): Promise<RunningApi> {
       bootstrapAdminPassword: config.bootstrapAdminPassword,
     },
   );
+  // P8-B S1 (D-PB-1 = B): the first-boot pricebook seed — the verified 1404 edition
+  // enters `pricebook_editions` through the normal import gate, directly ACTIVE, with
+  // the bootstrap admin as actor, and the historical estimate-version bindings are
+  // backfilled in the same transaction. A no-op on every later boot.
+  await seedPricebookEdition({
+    users: dependencies.governance.users,
+    editions: dependencies.repositories.editions,
+    transact: dependencies.transact,
+    clock: dependencies.clock,
+    datasetPath: config.datasetPath,
+  });
   const app = createApiServer(dependencies);
   app.addHook('onClose', async () => {
     await close();

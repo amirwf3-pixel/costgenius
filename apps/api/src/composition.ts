@@ -13,6 +13,7 @@ import {
   DrizzleEstimateRepository,
   DrizzleFinalizedEstimateRepository,
   DrizzleFinalizedTakeoffRepository,
+  DrizzlePricebookEditionRepository,
   DrizzleProjectRepository,
   DrizzleSessionRepository,
   DrizzleTakeoffDocumentRepository,
@@ -52,6 +53,8 @@ export const bindRepositories = (executor: DbExecutor): TransactionalRepositorie
   users: new DrizzleUserRepository(executor),
   sessions: new DrizzleSessionRepository(executor),
   audit: new DrizzleAuditEventRepository(executor),
+  // P8-B S1: the edition repository (the seed's import write + the binding backfill).
+  editions: new DrizzlePricebookEditionRepository(executor),
 });
 
 /** The S3 transactional unit of work over one Drizzle client (CG-GOV §4.2). */
@@ -73,6 +76,7 @@ export async function buildDependencies(config: ApiConfig): Promise<ComposedApi>
       finalized: poolBound.finalized,
       takeoffDocuments: poolBound.takeoffDocuments,
       finalizedTakeoffs: poolBound.finalizedTakeoffs,
+      editions: poolBound.editions,
     },
     governance: {
       users: poolBound.users,

@@ -138,13 +138,19 @@ engineVersion}`) persisted on `boq_lines.trace.takeoff` (existing JSONB path, no
 official 1404 PDF (repo root, SHA-256 c49e3155…16fae0f)
    → verified staged dataset  packages/pricebook/data/verified-1404.staged.v0.1.0.json
      (formatVersion 1 · edition ir-1404-abniye · 1564 rows · bound by sourceFileHash)
-   → loaded IN-MEMORY by the API (DATASET_PATH) → S2/S3
+   → P8-B S1: persisted as the ACTIVE edition in pricebook_editions by the first-boot
+     seed (the SAME import gate; contentHash a669ddd4…4de786; DB = source of truth)
+   → loaded IN-MEMORY by the API (DATASET_PATH) for S2/S3 line resolution (S1 stage)
 ```
 
 - The dataset is immutable; 193 pricebook tests pin the row count, the source hash and
   the row invariants.
-- The database stores **no pricebook table** — only application data and the snapshots
-  derived from the dataset.
+- Since P8-B S1 the database stores the **pricebook_editions registry** (migration
+  `0004_p8b_pricebook_editions`, the 13th table): immutable edition rows guarded at
+  the database level (trigger-enforced content/provenance immutability, no delete,
+  0-or-1 ACTIVE per discipline, version bindings stamped and pinned). The staged file
+  remains the seed artifact and the provenance reference; prices still freeze into
+  BOQ lines at line-add and never resolve from the registry at calculation time.
 - Line payloads are strict-schema: `basePrice`/`unitPrice`/`lineAmount` from a client
   are rejected with 400.
 - Row statuses: `VERIFIED_SPEC_ONLY` / `INCOMPLETE` / `EXTERNAL_DEPENDENCY` (4 rows).
@@ -300,7 +306,7 @@ Fixtures use the official 1404 rows (the golden estimate) — never invented pri
 ## 12. Not implemented (boundaries only — no claim of existence)
 
 `apps/worker`; the scaffold packages `market-prices`, `audit`, `ai-assist`,
-`contracts`, `i18n`, `ui`; the pricebook edition lifecycle (Phase-8 **P8-B** — contract closed in `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`, which is implementation-ready with D-PB-1..D-PB-5 final and supersedes the lifecycle sections of the 0.1.0 spec; implementation NOT started); an audit read
+`contracts`, `i18n`, `ui`; the pricebook edition lifecycle API and UI (Phase-8 **P8-B** — contract closed in `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`; **S1 is implemented**: the `pricebook_editions` registry, migration 0004, the first-boot 1404 seed, the estimate-version edition bindings and the database-level immutability guards; the lifecycle routes #39–43 and the edition UI are NOT implemented — S2/S3); an audit read
 API/UI (the `audit_events` table is write-only from the application in V1.1);
 organizations and RLS; drawing management (unspecified); Excel live formulas; a
 Docker/container artifact; load testing; login rate limiting and CSRF tokens

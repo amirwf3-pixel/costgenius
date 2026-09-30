@@ -899,6 +899,7 @@ describe('S3 §4.2 — transactional atomicity', () => {
         finalized: poolBound.finalized,
         takeoffDocuments: poolBound.takeoffDocuments,
         finalizedTakeoffs: poolBound.finalizedTakeoffs,
+        editions: poolBound.editions,
       },
       // the pool-bound writer stays REAL — it only serves standalone events (login_failed)
       governance: { users: poolBound.users, sessions: poolBound.sessions, audit: poolBound.audit },
@@ -999,6 +1000,35 @@ describe('S3 §4.2/§4.3 — append-only surface and the S4 boundary', () => {
       details: {},
     });
   });
+
+  it('the P8-B S1 seed wrote its two edition events with exact payloads (CG-IR-PB@0.2.0 §16/§24)', async () => {
+    // The audit-aware server boots through the REAL seed path (helpers run
+    // seedPricebookEdition after ensureBootstrapAdmin), so the two seeded events are
+    // part of this suite's history — with exactly the contract's details.
+    const imported = await eventsOf('pricebook_edition.imported', 'ir-1404-abniye');
+    expect(imported).toHaveLength(1);
+    expect(imported[0]?.actorUserId).toBe(adminId);
+    expect(imported[0]?.projectId).toBe(null);
+    expect(imported[0]?.resourceType).toBe('pricebook_edition');
+    expect(imported[0]?.details).toEqual({
+      contentHash: 'a669ddd4c315ee26fda6e43cff56eeac05cc03178ed8a665a13f49ff814de786',
+      rowCount: 1564,
+      warningCount: 11,
+      seeded: true,
+    });
+    const activated = await eventsOf('pricebook_edition.activated', 'ir-1404-abniye');
+    expect(activated).toHaveLength(1);
+    expect(activated[0]?.actorUserId).toBe(adminId);
+    expect(activated[0]?.projectId).toBe(null);
+    expect(activated[0]?.details).toEqual({
+      contentHash: 'a669ddd4c315ee26fda6e43cff56eeac05cc03178ed8a665a13f49ff814de786',
+      supersededEditionId: null,
+      seeded: true,
+    });
+    // the third catalog entry of §16 (.archived) has NO writer yet — S2's routes
+    const archived = await eventsOf('pricebook_edition.archived');
+    expect(archived).toEqual([]);
+  });
 });
 
 /* ------------------------------------------------------------------------------------------------
@@ -1027,6 +1057,12 @@ describe('S3 security — the persisted history is safe and exact', () => {
       'role',
       'from',
       'to',
+      // P8-B S1: the two seeded pricebook-edition events (CG-IR-PB@0.2.0 §16)
+      'contentHash',
+      'rowCount',
+      'warningCount',
+      'supersededEditionId',
+      'seeded',
     ]);
     for (const row of rows) {
       for (const key of Object.keys(row.details as Record<string, unknown>)) {

@@ -85,12 +85,15 @@ CostGenius is a professional quantity-takeoff (متره) and cost-estimation (ب
 > **contract closed** in `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md` —
 > D-PB-1 through D-PB-5 final (D-PB-1 = B, D-PB-2 = A, D-PB-3 = B, D-PB-4 = A,
 > D-PB-5 = A). **S1 (edition persistence + 1404 seed), S2 (the lifecycle API,
-> routes #39–#43 + the ACTIVE-resolving default edition search) and S3 (edition
+> routes #39–#43 + the ACTIVE-resolving default edition search), S3 (edition
 > binding: the optional `editionId` on version creation — omitted → ACTIVE,
 > explicit ACTIVE/ARCHIVED, DRAFT refused; per-version line/transfer resolution
 > against the bound edition; the rows `editionId` parameter; the version-creation
-> selector and bound-edition UI) implemented** — 2026-09-30/2026-10-01. Any further
-> P8-B stage (S4) requires its own owner execution order.
+> selector and bound-edition UI) and S4 (the steward editions management UI of §19:
+> the role-scoped «فهرست‌بهاها» page — the #39 edition list, the #41 import dialog
+> with its inline import report and structured-failure rendering, and the #42/#43
+> activate/archive confirmations over the unchanged API) implemented** —
+> 2026-09-30/2026-10-01. **P8-B is COMPLETE** (the §22 deferrals stand).
 
 ## 7. Open questions (require domain-expert input)
 

@@ -21,10 +21,11 @@ regional-coefficient VALUES remain an external dependency (circular 94/69416 ann
 and are never substituted. The edition lifecycle contract is
 [`spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`](spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md) — contract
 closed 2026-09-29 (D-PB-1..D-PB-5 final); **S1 (persistence + seed), S2 (the
-lifecycle API: routes #39–#43, the ACTIVE-resolving default edition search) and S3
+lifecycle API: routes #39–#43, the ACTIVE-resolving default edition search), S3
 (edition binding: the optional `editionId` on version creation, per-version
-line/transfer resolution, the rows `editionId` parameter, the selector UI) implemented
-2026-09-30/2026-10-01; further P8-B stages (S4) not started**;
+line/transfer resolution, the rows `editionId` parameter, the selector UI) and S4
+(the steward editions management UI of §19, over the unchanged routes) implemented
+2026-09-30/2026-10-01 — P8-B COMPLETE**;
 [`spec/CG-IR-PRICEBOOK-SPEC@0.1.0.md`](spec/CG-IR-PRICEBOOK-SPEC@0.1.0.md) is the
 superseded historical verification record of the official 1404 source (its lifecycle
 model is superseded by 0.2.0). `spec/fixtures/` holds a **synthetic** fixture used

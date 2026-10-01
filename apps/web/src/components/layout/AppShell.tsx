@@ -5,11 +5,16 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../../api/context.js';
+import { useSession } from '../auth/AuthenticatedApp.js';
 
 export function AppShell({ children }: { children: ReactNode }): ReactElement {
   const api = useApi();
+  const session = useSession();
   const [online, setOnline] = useState<boolean | undefined>(undefined);
   const location = useLocation();
+  // P8-B S4 (§19): the editions management navigation is visible to the two
+  // pipeline roles only — pure UX; the backend route policy authorizes the calls.
+  const canManageEditions = session.role === 'data_steward' || session.role === 'org_admin';
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +59,16 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
           >
             پروژه‌ها
           </Link>
+          {canManageEditions && (
+            <Link
+              to="/pricebook/editions"
+              className={
+                location.pathname.startsWith('/pricebook/editions') ? 'nav-link active' : 'nav-link'
+              }
+            >
+              فهرست‌بهاها
+            </Link>
+          )}
           <Link
             to="/about"
             className={location.pathname === '/about' ? 'nav-link active' : 'nav-link'}

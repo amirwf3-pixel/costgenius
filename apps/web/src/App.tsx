@@ -15,6 +15,7 @@ import { ProjectDetailPage } from './components/projects/ProjectDetailPage.js';
 import { EstimateDetailPage } from './components/estimates/EstimateDetailPage.js';
 import { VersionWorkspacePage } from './components/versions/VersionWorkspacePage.js';
 import { TakeoffWorkspacePage } from './components/takeoff/TakeoffWorkspacePage.js';
+import { PricebookEditionsPage } from './components/editions/PricebookEditionsPage.js';
 import { AuthenticatedApp } from './components/auth/AuthenticatedApp.js';
 
 export function App(): ReactElement {
@@ -31,6 +32,10 @@ export function App(): ReactElement {
           />
           <Route path="/estimates/:estimateId" element={<EstimateDetailPage />} />
           <Route path="/versions/:versionId" element={<VersionWorkspacePage />} />
+          {/* P8-B S4 (§19): the steward-facing editions management surface — the
+              navigation entry is role-scoped (data_steward/org_admin) in the AppShell;
+              the backend route policy remains the authoritative boundary. */}
+          <Route path="/pricebook/editions" element={<PricebookEditionsPage />} />
           <Route
             path="/about"
             element={

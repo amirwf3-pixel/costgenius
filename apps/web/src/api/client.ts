@@ -15,6 +15,8 @@ import type {
   EstimateVersion,
   FinalizedBundle,
   FinalizedTakeoffBundle,
+  ImportEditionResult,
+  ImportIssueView,
   NewEstimateInput,
   NewLineInput,
   NewProjectInput,
@@ -169,6 +171,30 @@ export function takeoffEngineHints(serverMessage: string): readonly string[] {
   return hints;
 }
 
+/**
+ * P8-B S4: the structured issues of a rejected staged import — the import gate's
+ * failures ride in `details.failures` of a 422 PRICEBOOK_IMPORT_REJECTED (§17 #41).
+ * Returned verbatim (code + optional rowCode + message) for inline rendering; an
+ * empty array means the error carried no structured failures.
+ */
+export function editionImportFailures(details: unknown): readonly ImportIssueView[] {
+  const failures = (details as { failures?: unknown } | undefined)?.failures;
+  if (!Array.isArray(failures)) return [];
+  const issues: ImportIssueView[] = [];
+  for (const failure of failures) {
+    const code = (failure as { code?: unknown }).code;
+    const message = (failure as { message?: unknown }).message;
+    if (typeof code !== 'string' || typeof message !== 'string') continue;
+    const rowCode = (failure as { rowCode?: unknown }).rowCode;
+    issues.push({
+      code,
+      ...(typeof rowCode === 'string' ? { rowCode } : {}),
+      message,
+    });
+  }
+  return issues;
+}
+
 /** The single application error: an HTTP error with the backend's stable contract. */
 export class ApiError extends Error {
   /**
@@ -233,6 +259,17 @@ export interface ApiClient {
   ) => Promise<readonly PricebookRowRef[]>;
   /** P8-B S3: the #39 edition list (viewer-readable) — the version selector's data. */
   readonly listEditions: () => Promise<readonly PricebookEditionSummary[]>;
+  /**
+   * P8-B S4: the #41 staged-document import (data_steward+). The parsed JSON of the
+   * picked staged file goes to the API verbatim; a 422 PRICEBOOK_IMPORT_REJECTED
+   * carries the gate's structured failures under details.failures (nothing stored,
+   * zero events — the API guarantee).
+   */
+  readonly importEdition: (file: unknown) => Promise<ImportEditionResult>;
+  /** P8-B S4: the #42 activation command (data_steward+, four-eyes on DRAFT→ACTIVE). */
+  readonly activateEdition: (editionId: string) => Promise<PricebookEditionSummary>;
+  /** P8-B S4: the #43 archive command (data_steward+; the legal 0-active state). */
+  readonly archiveEdition: (editionId: string) => Promise<PricebookEditionSummary>;
   /** D-015/D5-A: stateless dimensional quantity preview (calc-engine, exact-only). */
   readonly previewTakeoffQuantities: (
     items: readonly TakeoffPreviewItemInput[],
@@ -479,6 +516,24 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         '/pricebook/editions',
       );
       return body.editions;
+    },
+    async importEdition(file) {
+      return await request<ImportEditionResult>('/pricebook/editions', {
+        method: 'POST',
+        body: file,
+      });
+    },
+    async activateEdition(editionId) {
+      return await request<PricebookEditionSummary>(
+        `/pricebook/editions/${encodeURIComponent(editionId)}/activate`,
+        { method: 'POST' },
+      );
+    },
+    async archiveEdition(editionId) {
+      return await request<PricebookEditionSummary>(
+        `/pricebook/editions/${encodeURIComponent(editionId)}/archive`,
+        { method: 'POST' },
+      );
     },
     async createTakeoff(projectId, input) {
       return await request<TakeoffDocument>(`/projects/${projectId}/takeoffs`, {

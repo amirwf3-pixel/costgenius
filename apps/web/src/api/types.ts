@@ -118,11 +118,58 @@ export interface PricebookRowRef {
  * selector's data. DRAFT editions are never offered client-side (the server refuses
  * them regardless — `EDITION_NOT_SELECTABLE`).
  */
+/**
+ * The #39 edition list row (CG-IR-PB@0.2.0 §17) — the ACTUAL response shape of
+ * `GET /pricebook/editions`, mirrored field-for-field: identity, provenance,
+ * lifecycle state and the row count; never the row bulk, never the import report.
+ * The activation/archival ACTORS are not part of the #39 contract — the API carries
+ * their timestamps only — so the page renders exactly these fields (nothing invented).
+ */
 export interface PricebookEditionSummary {
   readonly editionId: string;
+  readonly discipline: string;
   readonly year: string;
   readonly title: string;
+  readonly organization: string;
+  readonly notificationNumber: string | null;
+  readonly notificationDate: string | null;
+  readonly sourceFileHash: string;
+  readonly contentHash: string;
+  readonly rowCount: number;
   readonly status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  readonly supersedesEditionId: string | null;
+  readonly importedBy: string;
+  readonly importedAt: string;
+  readonly activatedAt: string | null;
+  readonly archivedAt: string | null;
+}
+
+/** One structured issue of the stored/returned import report (§10/§17 #41). */
+export interface ImportIssueView {
+  readonly code: string;
+  readonly rowCode?: string;
+  readonly message: string;
+}
+
+/**
+ * The import report of `POST /pricebook/editions` (§10): the complete validation
+ * evidence — mirrored from the response; the 422 rejection carries the same issue
+ * shape under `error.details.failures`.
+ */
+export interface ImportReportView {
+  readonly ok: boolean;
+  readonly editionId: string;
+  readonly rowCount: number;
+  readonly errorCount: number;
+  readonly warningCount: number;
+  readonly errors: readonly ImportIssueView[];
+  readonly warnings: readonly ImportIssueView[];
+}
+
+/** The 201 reply of the import route: the new DRAFT edition + its import report. */
+export interface ImportEditionResult {
+  readonly edition: PricebookEditionSummary;
+  readonly importReport: ImportReportView;
 }
 
 /** The stable backend error body: {error: {code, message, details?}}. */

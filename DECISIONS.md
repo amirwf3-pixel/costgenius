@@ -487,7 +487,7 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
 > database passes). P8-B remains NOT STARTED and requires a separate owner execution
 > order.
 
-## D-019 · Phase 8 (P8-B) Pricebook edition lifecycle — contract closure (Accepted — contract ONLY, NOT implemented)
+## D-019 · Phase 8 (P8-B) Pricebook edition lifecycle — contract closure (Accepted — IMPLEMENTED S1–S4, P8-B COMPLETE)
 
 - **Date**: 2026-09-29 · **Status**: Accepted — the P8-B decision-gate resolutions
   **D-PB-1 = B** (the shipped 1404 edition enters through the same edition pipeline as a
@@ -496,11 +496,13 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
   the only ACTIVE edition is permitted — the 0-active state fails deterministically via
   `EDITION_NOT_ACTIVE`) and **D-PB-5 = A** (hash + metadata + provenance only; no blob or
   filesystem storage subsystem) are final and owner-ordered. **D-PB-3 = B (final — owner order 2026-09-29): version creation accepts an optional `editionId`; omitted means the current ACTIVE edition; supplied means ACTIVE or ARCHIVED; DRAFT is rejected (`EDITION_NOT_SELECTABLE`); the version's edition binding is immutable; line-add and takeoff transfer use the target version's bound edition; no silent edition switching (no per-line selection in V1.1).**
-  This is a **contract-closure** decision only: NO implementation, no source, no
-  migration, no route, no UI, no test has been made. The contract lives in
-  `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`, superseding the lifecycle
-  sections of `CG-IR-PRICEBOOK-SPEC@0.1.0` (whose verified factual/source record remains
-  authoritative), awaiting a separate execution order.
+  The contract lives in `packages/pricebook/spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`,
+  superseding the lifecycle sections of `CG-IR-PRICEBOOK-SPEC@0.1.0` (whose verified
+  factual/source record remains authoritative). **Implementation status (updated
+  2026-10-01): S1 (edition persistence + 1404 seed), S2 (the lifecycle API #39–#43),
+  S3 (edition binding, D-PB-3 = B) and S4 (the steward editions management UI of §19
+  bullet 1 — the role-scoped «فهرست‌بهاها» page over the unchanged routes) are all
+  implemented and verified; P8-B is COMPLETE.**
 - **D-PB-1 = B — one pipeline, no special case for 1404**: the verified staged file seeds
   `pricebook_editions` through the normal import gate on first boot (idempotent; directly
   ACTIVE; two seeded audit events, actor = bootstrap admin). Consequence: one lifecycle

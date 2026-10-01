@@ -17,6 +17,8 @@ import type {
   Estimate,
   EstimateVersion,
   FinalizedTakeoffBundle,
+  ImportReportView,
+  PricebookEditionSummary,
   Project,
   TakeoffDocument,
   TakeoffListRow,
@@ -25,6 +27,8 @@ import type {
   AuthSession,
 } from '../src/api/types.js';
 import { TakeoffWorkspacePage } from '../src/components/takeoff/TakeoffWorkspacePage.js';
+import { PricebookEditionsPage } from '../src/components/editions/PricebookEditionsPage.js';
+import { AppShell } from '../src/components/layout/AppShell.js';
 import { LoginPage } from '../src/components/auth/LoginPage.js';
 import { AuthenticatedApp } from '../src/components/auth/AuthenticatedApp.js';
 import { ApiError } from '../src/api/client.js';
@@ -343,6 +347,11 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     // P8-B S3: the edition list — the version-creation selector's data (DRAFT filtered
     // client-side; the fake returns no editions → the selector stays empty).
     listEditions: vi.fn(() => Promise.resolve([])),
+    // P8-B S4: the editions management surface (§19) — defaults reject; each test
+    // overrides exactly what it drives.
+    importEdition: vi.fn(() => Promise.reject(new Error('not used here'))),
+    activateEdition: vi.fn(() => Promise.reject(new Error('not used here'))),
+    archiveEdition: vi.fn(() => Promise.reject(new Error('not used here'))),
     searchPricebook: vi.fn(() =>
       Promise.resolve([
         {
@@ -1621,5 +1630,439 @@ describe('P8-A S1 authentication UI', () => {
       'تکرار گذرواژهٔ جدید با خودش یکسان نیست.',
     );
     expect(api.changePassword).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------------------------------------
+ * P8-B S4 — the steward-facing editions management page (CG-IR-PB@0.2.0 §19 bullet 1):
+ * rendering, role-scoped navigation UX, the #41 import dialog (inline report +
+ * structured failures), and the #42/#43 confirmation dialogs over the existing routes.
+ * -----------------------------------------------------------------------------------------------*/
+
+const STEWARD_SESSION: AuthSession = {
+  userId: '99999999-8888-4777-8666-555555555555',
+  username: 'steward',
+  role: 'data_steward',
+  expiresAt: '2026-01-01T12:00:00Z',
+};
+
+const EDITION_ACTIVE: PricebookEditionSummary = {
+  editionId: 'ir-1404-abniye',
+  discipline: 'abniye',
+  year: '1404',
+  title: 'فهرست بهای واحد پایه رشته ابنیه',
+  organization: 'سازمان برنامه و بودجه کشور',
+  notificationNumber: '742948',
+  notificationDate: '2025-04-01T00:00:00Z',
+  sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+  contentHash: 'a669ddd4c315ee26fda6e43cff56eeac05cc03178ed8a665a13f49ff814de786',
+  rowCount: 1564,
+  status: 'ACTIVE',
+  supersedesEditionId: null,
+  importedBy: '11111111-2222-4333-8444-555555555555',
+  importedAt: '2026-01-01T00:00:00Z',
+  activatedAt: '2026-01-01T00:00:00Z',
+  archivedAt: null,
+};
+
+const EDITION_DRAFT: PricebookEditionSummary = {
+  editionId: 'ir-1410-abniye-test',
+  discipline: 'abniye',
+  year: '1410',
+  title: 'فهرست آزمونی آزمون',
+  organization: 'سازمان برنامه و بودجه کشور',
+  notificationNumber: null,
+  notificationDate: null,
+  sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+  contentHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  rowCount: 3,
+  status: 'DRAFT',
+  supersedesEditionId: null,
+  importedBy: '99999999-8888-4777-8666-555555555555',
+  importedAt: '2026-01-02T00:00:00Z',
+  activatedAt: null,
+  archivedAt: null,
+};
+
+const IMPORT_REPORT: ImportReportView = {
+  ok: true,
+  editionId: 'ir-1410-abniye-test',
+  rowCount: 3,
+  errorCount: 0,
+  warningCount: 1,
+  errors: [],
+  warnings: [{ code: 'PB_ROW_INCOMPLETE', rowCode: '010301', message: 'ردیف ناقص است.' }],
+};
+
+/** Renders the full authenticated surface (session gate + shell + the editions page). */
+function renderEditionsSurface(api: ApiClient, route = '/pricebook/editions'): void {
+  render(
+    <MemoryRouter initialEntries={[route]}>
+      <ApiProvider client={api}>
+        <AuthenticatedApp>
+          <AppShell>
+            <Routes>
+              <Route path="/pricebook/editions" element={<PricebookEditionsPage />} />
+              <Route path="*" element={<div>workspace-content</div>} />
+            </Routes>
+          </AppShell>
+        </AuthenticatedApp>
+      </ApiProvider>
+    </MemoryRouter>,
+  );
+}
+
+/** A fakeApi whose session has the given role and whose editions list is the fixture. */
+function editionsApi(role: AuthSession['role'], overrides: Partial<ApiClient> = {}): ApiClient {
+  return fakeApi({
+    getSession: vi.fn(() => Promise.resolve({ ...AUTH_SESSION, role })),
+    listEditions: vi.fn(() => Promise.resolve([EDITION_ACTIVE, EDITION_DRAFT])),
+    ...overrides,
+  });
+}
+
+/** The card <li> of the edition with this full «title (year)» heading. */
+function editionCard(fullTitle: string): HTMLElement {
+  const card = screen.getByText(fullTitle).closest('li');
+  if (card === null) throw new Error(`no edition card for ${fullTitle}`);
+  return card;
+}
+
+/** The async variant — waits for the list to render first. */
+async function editionCardOf(fullTitle: string): Promise<HTMLElement> {
+  await screen.findByText(fullTitle);
+  return editionCard(fullTitle);
+}
+
+const ACTIVE_TITLE = 'فهرست بهای واحد پایه رشته ابنیه (1404)';
+const DRAFT_TITLE = 'فهرست آزمونی آزمون (1410)';
+
+describe('PricebookEditionsPage — rendering (P8-B S4 §2)', () => {
+  it('renders every edition with the §19 metadata fields', async () => {
+    renderEditionsSurface(editionsApi('data_steward'));
+    const activeCard = await editionCardOf(ACTIVE_TITLE);
+    expect(within(activeCard).getByText('جاری (فعال)')).toBeVisible(); // status badge
+    expect(within(activeCard).getByText('742948')).toBeVisible(); // circular number
+    expect(within(activeCard).getByText('a669ddd4c315…')).toBeVisible(); // short contentHash
+    expect(within(activeCard).getByText('1564')).toBeVisible(); // rowCount
+    expect(within(activeCard).getByText('11111111-222…')).toBeVisible(); // importedBy (short)
+    expect(within(activeCard).getAllByText('فعال‌سازی').length).toBeGreaterThan(0); // the label
+    expect(within(activeCard).getByRole('button', { name: 'بایگانی' })).toBeVisible(); // no activate button on ACTIVE
+
+    const draftCard = await editionCardOf(DRAFT_TITLE);
+    expect(within(draftCard).getByText('پیش‌نویس')).toBeVisible();
+    expect(within(draftCard).getAllByText('—').length).toBeGreaterThan(0); // no circular, not activated/archived
+    expect(within(draftCard).getByText('bbbbbbbbbbbb…')).toBeVisible();
+    expect(within(draftCard).getByText('3')).toBeVisible(); // rowCount
+    expect(within(draftCard).getByRole('button', { name: 'فعال‌سازی' })).toBeVisible();
+    expect(within(draftCard).getByRole('button', { name: 'بایگانی' })).toBeVisible();
+  });
+
+  it('shows the loading state while the list loads', async () => {
+    renderEditionsSurface(
+      fakeApi({
+        getSession: vi.fn(() => Promise.resolve(STEWARD_SESSION)),
+        listEditions: vi.fn(() => new Promise<readonly PricebookEditionSummary[]>(() => undefined)),
+      }),
+    );
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+    expect(screen.getByText('در حال بارگذاری…')).toBeVisible();
+  });
+
+  it('shows the error state with a retry when the list fails', async () => {
+    renderEditionsSurface(
+      fakeApi({
+        getSession: vi.fn(() => Promise.resolve(STEWARD_SESSION)),
+        listEditions: vi.fn(() => Promise.reject(new Error('boom'))),
+      }),
+    );
+    expect(await screen.findByText('خطا در دریافت اطلاعات')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'تلاش مجدد' })).toBeVisible();
+  });
+
+  it('shows the empty state when no edition exists', async () => {
+    renderEditionsSurface(
+      fakeApi({
+        getSession: vi.fn(() => Promise.resolve(STEWARD_SESSION)),
+        listEditions: vi.fn(() => Promise.resolve([])),
+      }),
+    );
+    expect(await screen.findByText('هنوز فهرست‌بهایی ثبت نشده است.')).toBeVisible();
+  });
+});
+
+describe('PricebookEditionsPage — navigation and authorization UX (P8-B S4 §1)', () => {
+  it('the data_steward sees the navigation entry', async () => {
+    renderEditionsSurface(editionsApi('data_steward'), '/projects');
+    expect(await screen.findByRole('link', { name: 'فهرست‌بهاها' })).toBeVisible();
+  });
+
+  it('the org_admin sees the navigation entry', async () => {
+    renderEditionsSurface(editionsApi('org_admin'), '/projects');
+    expect(await screen.findByRole('link', { name: 'فهرست‌بهاها' })).toBeVisible();
+  });
+
+  it('estimator, reviewer and viewer NEVER see the navigation entry', async () => {
+    for (const role of ['estimator', 'reviewer', 'viewer'] as const) {
+      cleanup();
+      renderEditionsSurface(editionsApi(role), '/projects');
+      await screen.findByText('workspace-content');
+      expect(screen.queryByRole('link', { name: 'فهرست‌بهاها' })).toBeNull();
+    }
+  });
+
+  it('anonymous users never reach the authenticated surface (login page only)', async () => {
+    renderEditionsSurface(
+      fakeApi({
+        getSession: vi.fn(() =>
+          Promise.reject(new ApiError(401, 'UNAUTHENTICATED', 'a valid session is required')),
+        ),
+      }),
+    );
+    expect(await screen.findByRole('heading', { name: 'ورود به CostGenius' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'فهرست‌بهاها' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'فهرست‌بهاها' })).toBeNull();
+  });
+
+  it('a viewer reaching the page by URL sees the read-only list — no mutation actions', async () => {
+    renderEditionsSurface(editionsApi('viewer'));
+    expect(await screen.findByText(ACTIVE_TITLE)).toBeVisible();
+    expect(screen.queryByRole('button', { name: '+ درون‌ریزی فهرست‌بها' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'فعال‌سازی' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'بایگانی' })).toBeNull();
+  });
+});
+
+describe('PricebookEditionsPage — the #41 import dialog (P8-B S4 §3)', () => {
+  it('imports a staged JSON file and renders the inline import report', async () => {
+    const api = editionsApi('data_steward', {
+      importEdition: vi.fn(() =>
+        Promise.resolve({ edition: EDITION_DRAFT, importReport: IMPORT_REPORT }),
+      ),
+    });
+    renderEditionsSurface(api);
+    await screen.findByText(ACTIVE_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: '+ درون‌ریزی فهرست‌بها' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'درون‌ریزی فهرست‌بها' });
+    expect(within(dialog).getByRole('button', { name: 'درون‌ریزی' })).toBeDisabled();
+
+    const staged = new File(
+      [JSON.stringify({ formatVersion: '1', kind: 'staged-import' })],
+      'staged.json',
+      { type: 'application/json' },
+    );
+    await userEvent.upload(within(dialog).getByLabelText('پروندهٔ سند پلکانی فهرست‌بها'), staged);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'درون‌ریزی' }));
+
+    await waitFor(() => {
+      expect(api.importEdition).toHaveBeenCalledTimes(1);
+    });
+    expect(api.importEdition).toHaveBeenCalledWith({ formatVersion: '1', kind: 'staged-import' });
+    const report = await within(dialog).findByLabelText('گزارش درون‌ریزی');
+    expect(report).toHaveTextContent('درون‌ریزی پذیرفته شد');
+    expect(report).toHaveTextContent('ir-1410-abniye-test');
+    expect(report).toHaveTextContent('3');
+    expect(report).toHaveTextContent('PB_ROW_INCOMPLETE');
+    expect(report).toHaveTextContent('ردیف ناقص است.');
+
+    // the report stays until the steward refreshes — then the list reloads
+    await userEvent.click(within(dialog).getByRole('button', { name: 'نوسازی فهرست' }));
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('renders the structured validation failures of a rejected import — no fake success', async () => {
+    const api = editionsApi('data_steward', {
+      importEdition: vi.fn(() =>
+        Promise.reject(
+          new ApiError(422, 'PRICEBOOK_IMPORT_REJECTED', 'the staged document was rejected', {
+            failures: [
+              { code: 'PB_BAD_PRICE', rowCode: '0102', message: 'قیمت پایه نامعتبر است.' },
+              { code: 'PB_MISSING_UNIT', message: 'واحد ردیف الزامی است.' },
+            ],
+          }),
+        ),
+      ),
+    });
+    renderEditionsSurface(api);
+    await screen.findByText(ACTIVE_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: '+ درون‌ریزی فهرست‌بها' }));
+    const dialog = await screen.findByRole('dialog', { name: 'درون‌ریزی فهرست‌بها' });
+    const staged = new File([JSON.stringify({ formatVersion: '1' })], 'bad.json', {
+      type: 'application/json',
+    });
+    await userEvent.upload(within(dialog).getByLabelText('پروندهٔ سند پلکانی فهرست‌بها'), staged);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'درون‌ریزی' }));
+
+    // the API guarantee, verbatim: nothing stored, no audit event
+    const failures = await within(dialog).findByLabelText('خطاهای اعتبارسنجی درون‌ریزی');
+    expect(failures).toHaveTextContent('هیچ چیزی ذخیره نشد و هیچ رویداد حسابرسی ثبت نشد');
+    expect(failures).toHaveTextContent('PB_BAD_PRICE');
+    expect(failures).toHaveTextContent('(0102)');
+    expect(failures).toHaveTextContent('قیمت پایه نامعتبر است.');
+    expect(failures).toHaveTextContent('PB_MISSING_UNIT');
+    // never a fabricated success: no report, no refresh, the dialog stays open
+    expect(within(dialog).queryByLabelText('گزارش درون‌ریزی')).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'نوسازی فهرست' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'انصراف' })).toBeVisible();
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('rejects a non-JSON file locally — the API is never called', async () => {
+    const api = editionsApi('data_steward');
+    renderEditionsSurface(api);
+    await screen.findByText(ACTIVE_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: '+ درون‌ریزی فهرست‌بها' }));
+    const dialog = await screen.findByRole('dialog', { name: 'درون‌ریزی فهرست‌بها' });
+    // a .txt pick is possible in a real browser (the accept hint only filters the
+    // picker) — bypass the userEvent accept emulation to exercise the same path here
+    const picker = userEvent.setup({ applyAccept: false });
+    await picker.upload(
+      within(dialog).getByLabelText('پروندهٔ سند پلکانی فهرست‌بها'),
+      new File(['not json at all'], 'staged.txt', { type: 'text/plain' }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'درون‌ریزی' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'پروندهٔ انتخاب‌شده JSON معتبر نیست.',
+    );
+    expect(api.importEdition).not.toHaveBeenCalled();
+  });
+});
+
+describe('PricebookEditionsPage — the #42 activation (P8-B S4 §4)', () => {
+  it('requires a confirmation that states all three consequences BEFORE any call', async () => {
+    const api = editionsApi('data_steward');
+    renderEditionsSurface(api);
+    await screen.findByText(DRAFT_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: 'فعال‌سازی' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'فعال‌سازی فهرست‌بها' });
+    // the three §19 statements, verbatim
+    expect(dialog).toHaveTextContent('این فهرست‌بها جاری (فعال) می‌شود.');
+    expect(dialog).toHaveTextContent('فهرست‌بهای جاری قبلی (در صورت وجود) بایگانی خواهد شد.');
+    expect(dialog).toHaveTextContent(
+      'نسخه‌های جدید برآورد از این پس به‌طور پیش‌فرض به همین فهرست‌بها',
+    );
+    expect(api.activateEdition).not.toHaveBeenCalled();
+
+    // cancel changes nothing
+    await userEvent.click(within(dialog).getByRole('button', { name: 'انصراف' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.activateEdition).not.toHaveBeenCalled();
+  });
+
+  it('a confirmed activation calls the API, refreshes the list and shows the result', async () => {
+    const api = editionsApi('data_steward', {
+      activateEdition: vi.fn(() =>
+        Promise.resolve({
+          ...EDITION_DRAFT,
+          status: 'ACTIVE' as const,
+          activatedAt: '2026-01-03T00:00:00Z',
+        }),
+      ),
+    });
+    renderEditionsSurface(api);
+    await screen.findByText(DRAFT_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: 'فعال‌سازی' }));
+    const dialog = await screen.findByRole('dialog', { name: 'فعال‌سازی فهرست‌بها' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'فعال‌سازی' }));
+
+    await waitFor(() => {
+      expect(api.activateEdition).toHaveBeenCalledWith('ir-1410-abniye-test');
+    });
+    expect(await screen.findByText(/فعال شد/)).toBeVisible();
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('surfaces the backend four-eyes rejection without refreshing the list', async () => {
+    const api = editionsApi('data_steward', {
+      activateEdition: vi.fn(() =>
+        Promise.reject(
+          new ApiError(403, 'EDITION_SELF_ACTIVATION_FORBIDDEN', 'the importer cannot activate'),
+        ),
+      ),
+    });
+    renderEditionsSurface(api);
+    await screen.findByText(DRAFT_TITLE);
+    await userEvent.click(screen.getByRole('button', { name: 'فعال‌سازی' }));
+    const dialog = await screen.findByRole('dialog', { name: 'فعال‌سازی فهرست‌بها' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'فعال‌سازی' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the importer cannot activate');
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(1); // nothing changed — no refresh
+    });
+  });
+});
+
+describe('PricebookEditionsPage — the #43 archive (P8-B S4 §5)', () => {
+  it('requires a confirmation before the archive call', async () => {
+    const api = editionsApi('data_steward');
+    renderEditionsSurface(api);
+    const activeCard = await editionCardOf(ACTIVE_TITLE);
+    await userEvent.click(within(activeCard).getByRole('button', { name: 'بایگانی' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'بایگانی فهرست‌بها' });
+    expect(dialog).toHaveTextContent(
+      'آیا از بایگانی فهرست‌بهای «فهرست بهای واحد پایه رشته ابنیه (1404)» مطمئنید؟',
+    );
+    expect(api.archiveEdition).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'انصراف' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.archiveEdition).not.toHaveBeenCalled();
+  });
+
+  it('a confirmed archive calls the API, refreshes the list and shows the result', async () => {
+    const api = editionsApi('data_steward', {
+      archiveEdition: vi.fn(() =>
+        Promise.resolve({
+          ...EDITION_ACTIVE,
+          status: 'ARCHIVED' as const,
+          archivedAt: '2026-01-04T00:00:00Z',
+        }),
+      ),
+    });
+    renderEditionsSurface(api);
+    const activeCard = await editionCardOf(ACTIVE_TITLE);
+    await userEvent.click(within(activeCard).getByRole('button', { name: 'بایگانی' }));
+    const dialog = await screen.findByRole('dialog', { name: 'بایگانی فهرست‌بها' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'بایگانی' }));
+
+    await waitFor(() => {
+      expect(api.archiveEdition).toHaveBeenCalledWith('ir-1404-abniye');
+    });
+    expect(await screen.findByText(/بایگانی شد/)).toBeVisible();
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('surfaces a backend archive error without refreshing the list', async () => {
+    const api = editionsApi('data_steward', {
+      archiveEdition: vi.fn(() =>
+        Promise.reject(
+          new ApiError(409, 'EDITION_ALREADY_ARCHIVED', 'the edition is already archived'),
+        ),
+      ),
+    });
+    renderEditionsSurface(api);
+    const activeCard = await editionCardOf(ACTIVE_TITLE);
+    await userEvent.click(within(activeCard).getByRole('button', { name: 'بایگانی' }));
+    const dialog = await screen.findByRole('dialog', { name: 'بایگانی فهرست‌بها' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'بایگانی' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the edition is already archived');
+    await waitFor(() => {
+      expect(api.listEditions).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,0 +1,1635 @@
+{
+  "specId": "CG-RCS",
+  "specVersion": "0.1.0",
+  "stage": "S1-quantity",
+  "notice": "Synthetic, generic geometric cases. No Iranian regulation, coefficient, price-book item or price is represented.",
+  "cases": [
+    {
+      "id": "RC-Q-001",
+      "title": "Rectangular area, single line",
+      "stage": "S1-quantity",
+      "category": "rectangular-area",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "4.5",
+                "width": "3.2"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "14.4",
+            "qty": "14.4",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "14.4",
+                "signedQty": "14.4"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = count × length × width = 1 × 4.5 × 3.2",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [
+        "Dimensions in metres",
+        "No deductions apply (not a measurement-convention statement)"
+      ],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      },
+      "expectedTrace": {
+        "op": "sum",
+        "label": "item:A",
+        "value": "14.4",
+        "unit": "m2",
+        "rule": "R5",
+        "inputs": [
+          {
+            "op": "multiply",
+            "label": "line:L1",
+            "value": "14.4",
+            "unit": "m2",
+            "rule": "R2",
+            "inputs": [
+              {
+                "op": "input",
+                "label": "count",
+                "value": "1",
+                "unit": null,
+                "inputs": [],
+                "ref": {
+                  "itemKey": "A",
+                  "lineKey": "L1",
+                  "field": "count"
+                }
+              },
+              {
+                "op": "input",
+                "label": "length",
+                "value": "4.5",
+                "unit": "m",
+                "inputs": [],
+                "ref": {
+                  "itemKey": "A",
+                  "lineKey": "L1",
+                  "field": "length"
+                }
+              },
+              {
+                "op": "input",
+                "label": "width",
+                "value": "3.2",
+                "unit": "m",
+                "inputs": [],
+                "ref": {
+                  "itemKey": "A",
+                  "lineKey": "L1",
+                  "field": "width"
+                }
+              }
+            ],
+            "ref": {
+              "itemKey": "A",
+              "lineKey": "L1"
+            }
+          }
+        ],
+        "ref": {
+          "itemKey": "A"
+        }
+      }
+    },
+    {
+      "id": "RC-Q-002",
+      "title": "Rectangular volume, single line",
+      "stage": "S1-quantity",
+      "category": "rectangular-volume",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "1",
+                "length": "6.25",
+                "width": "0.3",
+                "height": "0.45"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "exactQty": "0.84375",
+            "qty": "0.84375",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "0.84375",
+                "signedQty": "0.84375"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 1 × 6.25 × 0.3 × 0.45",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["Exact result kept; no rounding policy given"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-003",
+      "title": "Multiple identical elements via count",
+      "stage": "S1-quantity",
+      "category": "multiple-quantities",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "4",
+                "length": "0.4",
+                "width": "0.4",
+                "height": "3.1"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "exactQty": "1.984",
+            "qty": "1.984",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "1.984",
+                "signedQty": "1.984"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 4 × 0.4 × 0.4 × 3.1",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["Four geometrically identical elements"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-004",
+      "title": "Summation of several lines",
+      "stage": "S1-quantity",
+      "category": "summation",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "3.6",
+                "width": "2.8"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "2",
+                "length": "4.15",
+                "width": "2.8"
+              },
+              {
+                "lineKey": "L3",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "5.05",
+                "width": "2.8"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "47.46",
+            "qty": "47.46",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "10.08",
+                "signedQty": "10.08"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "23.24",
+                "signedQty": "23.24"
+              },
+              {
+                "lineKey": "L3",
+                "exactQty": "14.14",
+                "signedQty": "14.14"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 3.6×2.8 + 2×4.15×2.8 + 5.05×2.8 = 10.08 + 23.24 + 14.14",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-005",
+      "title": "Gross area with deductions",
+      "stage": "S1-quantity",
+      "category": "deductions",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "12.4",
+                "width": "3.05"
+              },
+              {
+                "lineKey": "D1",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "2",
+                "length": "1.2",
+                "width": "1.5"
+              },
+              {
+                "lineKey": "D2",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "1",
+                "length": "0.9",
+                "width": "2.1"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "32.33",
+            "qty": "32.33",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "37.82",
+                "signedQty": "37.82"
+              },
+              {
+                "lineKey": "D1",
+                "exactQty": "3.6",
+                "signedQty": "-3.6"
+              },
+              {
+                "lineKey": "D2",
+                "exactQty": "1.89",
+                "signedQty": "-1.89"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 12.4×3.05 − 2×1.2×1.5 − 0.9×2.1 = 37.82 − 3.6 − 1.89",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [
+        "Whether a given opening must be deducted is a measurement convention and is NOT decided here; the input simply declares deduction lines"
+      ],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": "Deduction applicability rules: requires-authoritative-source (spec §9)"
+      }
+    },
+    {
+      "id": "RC-Q-006",
+      "title": "Zero quantity lines are valid and traced",
+      "stage": "S1-quantity",
+      "category": "zero-quantity",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "0",
+                "length": "3",
+                "width": "2"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "0",
+                "width": "5"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "0",
+            "qty": "0",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "0",
+                "signedQty": "0"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "0",
+                "signedQty": "0"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 0×3×2 + 1×0×5 = 0",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["R7: zero lines retained in result and trace"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-007",
+      "title": "Decimal precision (no binary float error)",
+      "stage": "S1-quantity",
+      "category": "decimal-precision",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "3",
+                "length": "0.1",
+                "width": "0.2",
+                "height": "0.3"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "1",
+                "length": "1.001",
+                "width": "1.001",
+                "height": "1.001"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m3",
+            "exactQty": "1.021003001",
+            "qty": "1.021003001",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "0.018",
+                "signedQty": "0.018"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "1.003003001",
+                "signedQty": "1.003003001"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 3×0.1×0.2×0.3 + 1.001³ = 0.018 + 1.003003001",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["Binary float would yield 0.018000000000000002 for L1"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-008",
+      "title": "Unit mismatch between line and item is rejected",
+      "stage": "S1-quantity",
+      "category": "unit-mismatch",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2",
+                "width": "2"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "1",
+                "length": "2",
+                "width": "2",
+                "height": "0.1"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "UNIT_MISMATCH",
+            "itemKey": "A",
+            "lineKey": "L2",
+            "field": "unit"
+          }
+        ]
+      },
+      "formula": "R4: line.unit must equal item.unit; no conversion",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": ["No partial result (R8)"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-009",
+      "title": "Dimension count must match unit",
+      "stage": "S1-quantity",
+      "category": "unit-mismatch",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2",
+                "width": "2",
+                "height": "3"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "DIMENSION_UNIT_MISMATCH",
+            "itemKey": "A",
+            "lineKey": "L1",
+            "field": "height"
+          }
+        ]
+      },
+      "formula": "R1: m2 requires exactly length and width",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-010",
+      "title": "Negative net quantity is rejected",
+      "stage": "S1-quantity",
+      "category": "deductions",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2",
+                "width": "2"
+              },
+              {
+                "lineKey": "D1",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "1",
+                "length": "3",
+                "width": "2"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "NEGATIVE_NET_QUANTITY",
+            "itemKey": "A"
+          }
+        ]
+      },
+      "formula": "R6: 4 − 6 < 0",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-011",
+      "title": "Negative dimension is rejected (deductions use kind)",
+      "stage": "S1-quantity",
+      "category": "invalid-input",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2",
+                "width": "-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "NEGATIVE_INPUT",
+            "itemKey": "A",
+            "lineKey": "L1",
+            "field": "width"
+          }
+        ]
+      },
+      "formula": "R3",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-012",
+      "title": "Deterministic repeated and permuted calculation",
+      "stage": "S1-quantity",
+      "category": "determinism",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "12.4",
+                "width": "3.05"
+              },
+              {
+                "lineKey": "D1",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "2",
+                "length": "1.2",
+                "width": "1.5"
+              },
+              {
+                "lineKey": "D2",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "1",
+                "length": "0.9",
+                "width": "2.1"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "32.33",
+            "qty": "32.33",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "37.82",
+                "signedQty": "37.82"
+              },
+              {
+                "lineKey": "D1",
+                "exactQty": "3.6",
+                "signedQty": "-3.6"
+              },
+              {
+                "lineKey": "D2",
+                "exactQty": "1.89",
+                "signedQty": "-1.89"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "Same as RC-Q-005; run repeatedly and with permuted lines",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["Permutation changes only line/trace order, never qty (R9)"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      },
+      "repeat": {
+        "runs": 1000,
+        "linePermutations": [
+          ["L1", "D1", "D2"],
+          ["D2", "D1", "L1"],
+          ["D1", "L1", "D2"]
+        ],
+        "invariant": "canonical result byte-identical per permutation; qty identical across permutations"
+      }
+    },
+    {
+      "id": "RC-Q-013",
+      "title": "Item-stage rounding HALF_UP on a tie",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.23"
+              }
+            ],
+            "rounding": {
+              "stage": "item",
+              "scale": 2,
+              "mode": "HALF_UP"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "1.845",
+            "qty": "1.85",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "1.845",
+                "signedQty": "1.845"
+              }
+            ],
+            "roundedQty": "1.85"
+          }
+        ]
+      },
+      "formula": "1.5×1.23 = 1.845 → HALF_UP(2) = 1.85",
+      "rounding": {
+        "stage": "item",
+        "scale": 2,
+        "mode": "HALF_UP"
+      },
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-014",
+      "title": "Item-stage rounding HALF_EVEN on the same tie",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.23"
+              }
+            ],
+            "rounding": {
+              "stage": "item",
+              "scale": 2,
+              "mode": "HALF_EVEN"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "1.845",
+            "qty": "1.84",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "1.845",
+                "signedQty": "1.845"
+              }
+            ],
+            "roundedQty": "1.84"
+          }
+        ]
+      },
+      "formula": "1.845 → HALF_EVEN(2) = 1.84",
+      "rounding": {
+        "stage": "item",
+        "scale": 2,
+        "mode": "HALF_EVEN"
+      },
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-015",
+      "title": "Line-stage rounding differs from item-stage",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.003"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.003"
+              }
+            ],
+            "rounding": {
+              "stage": "line",
+              "scale": 2,
+              "mode": "HALF_UP"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "3.009",
+            "qty": "3",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "1.5045",
+                "signedQty": "1.5",
+                "roundedQty": "1.5"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "1.5045",
+                "signedQty": "1.5",
+                "roundedQty": "1.5"
+              }
+            ],
+            "roundedQty": "3"
+          }
+        ]
+      },
+      "formula": "each 1.5045 → 1.50; Σ = 3.00 (sum not re-rounded)",
+      "rounding": {
+        "stage": "line",
+        "scale": 2,
+        "mode": "HALF_UP"
+      },
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": ["For stage 'line', roundedQty = Σ rounded lines; exactQty stays exact"],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-016",
+      "title": "Item-stage rounding of the same lines",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.003"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1.5",
+                "width": "1.003"
+              }
+            ],
+            "rounding": {
+              "stage": "item",
+              "scale": 2,
+              "mode": "HALF_UP"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "3.009",
+            "qty": "3.01",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "1.5045",
+                "signedQty": "1.5045"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "1.5045",
+                "signedQty": "1.5045"
+              }
+            ],
+            "roundedQty": "3.01"
+          }
+        ]
+      },
+      "formula": "Σ = 3.009 → HALF_UP(2) = 3.01",
+      "rounding": {
+        "stage": "item",
+        "scale": 2,
+        "mode": "HALF_UP"
+      },
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-017",
+      "title": "Line-stage rounding applies to magnitude before sign",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2.005",
+                "width": "1"
+              },
+              {
+                "lineKey": "D1",
+                "kind": "deduction",
+                "unit": "m2",
+                "count": "1",
+                "length": "0.5",
+                "width": "0.25"
+              }
+            ],
+            "rounding": {
+              "stage": "line",
+              "scale": 2,
+              "mode": "FLOOR"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "1.88",
+            "qty": "1.88",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "2.005",
+                "signedQty": "2",
+                "roundedQty": "2"
+              },
+              {
+                "lineKey": "D1",
+                "exactQty": "0.125",
+                "signedQty": "-0.12",
+                "roundedQty": "0.12"
+              }
+            ],
+            "roundedQty": "1.88"
+          }
+        ]
+      },
+      "formula": "FLOOR(2.005)=2.00; FLOOR(0.125)=0.12 → −0.12; 2.00 − 0.12 = 1.88 (signed FLOOR would give −0.13)",
+      "rounding": {
+        "stage": "line",
+        "scale": 2,
+        "mode": "FLOOR"
+      },
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      },
+      "expectedTrace": {
+        "op": "sum",
+        "label": "item:A",
+        "value": "1.88",
+        "unit": "m2",
+        "rule": "R5",
+        "inputs": [
+          {
+            "op": "round",
+            "label": "line:L1",
+            "value": "2",
+            "unit": "m2",
+            "rule": "RND",
+            "inputs": [
+              {
+                "op": "multiply",
+                "label": "line:L1",
+                "value": "2.005",
+                "unit": "m2",
+                "rule": "R2",
+                "inputs": [
+                  {
+                    "op": "input",
+                    "label": "count",
+                    "value": "1",
+                    "unit": null,
+                    "inputs": [],
+                    "ref": {
+                      "itemKey": "A",
+                      "lineKey": "L1",
+                      "field": "count"
+                    }
+                  },
+                  {
+                    "op": "input",
+                    "label": "length",
+                    "value": "2.005",
+                    "unit": "m",
+                    "inputs": [],
+                    "ref": {
+                      "itemKey": "A",
+                      "lineKey": "L1",
+                      "field": "length"
+                    }
+                  },
+                  {
+                    "op": "input",
+                    "label": "width",
+                    "value": "1",
+                    "unit": "m",
+                    "inputs": [],
+                    "ref": {
+                      "itemKey": "A",
+                      "lineKey": "L1",
+                      "field": "width"
+                    }
+                  }
+                ]
+              }
+            ],
+            "rounding": {
+              "stage": "line",
+              "scale": 2,
+              "mode": "FLOOR"
+            },
+            "ref": {
+              "itemKey": "A",
+              "lineKey": "L1"
+            }
+          },
+          {
+            "op": "negate",
+            "label": "line:D1",
+            "value": "-0.12",
+            "unit": "m2",
+            "rule": "R3",
+            "inputs": [
+              {
+                "op": "round",
+                "label": "line:D1",
+                "value": "0.12",
+                "unit": "m2",
+                "rule": "RND",
+                "inputs": [
+                  {
+                    "op": "multiply",
+                    "label": "line:D1",
+                    "value": "0.125",
+                    "unit": "m2",
+                    "rule": "R2",
+                    "inputs": [
+                      {
+                        "op": "input",
+                        "label": "count",
+                        "value": "1",
+                        "unit": null,
+                        "inputs": [],
+                        "ref": {
+                          "itemKey": "A",
+                          "lineKey": "D1",
+                          "field": "count"
+                        }
+                      },
+                      {
+                        "op": "input",
+                        "label": "length",
+                        "value": "0.5",
+                        "unit": "m",
+                        "inputs": [],
+                        "ref": {
+                          "itemKey": "A",
+                          "lineKey": "D1",
+                          "field": "length"
+                        }
+                      },
+                      {
+                        "op": "input",
+                        "label": "width",
+                        "value": "0.25",
+                        "unit": "m",
+                        "inputs": [],
+                        "ref": {
+                          "itemKey": "A",
+                          "lineKey": "D1",
+                          "field": "width"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "rounding": {
+                  "stage": "line",
+                  "scale": 2,
+                  "mode": "FLOOR"
+                }
+              }
+            ],
+            "ref": {
+              "itemKey": "A",
+              "lineKey": "D1"
+            }
+          }
+        ],
+        "ref": {
+          "itemKey": "A"
+        }
+      }
+    },
+    {
+      "id": "RC-Q-018",
+      "title": "Counted items (each)",
+      "stage": "S1-quantity",
+      "category": "multiple-quantities",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "each",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "each",
+                "count": "12"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "each",
+                "count": "3"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "each",
+            "exactQty": "15",
+            "qty": "15",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "12",
+                "signedQty": "12"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "3",
+                "signedQty": "3"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 12 + 3",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-019",
+      "title": "Non-integer count is rejected",
+      "stage": "S1-quantity",
+      "category": "invalid-input",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m",
+                "count": "2.5",
+                "length": "3"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "NON_INTEGER_COUNT",
+            "itemKey": "A",
+            "lineKey": "L1",
+            "field": "count"
+          }
+        ]
+      },
+      "formula": "count must be an integer ≥ 0",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [
+        "Pending Q-2: fractional multipliers may later be modelled as a separate factor"
+      ],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-020",
+      "title": "All validation errors are reported in input order",
+      "stage": "S1-quantity",
+      "category": "invalid-input",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m3",
+                "count": "1",
+                "length": "1",
+                "width": "1",
+                "height": "1"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "1",
+                "width": "-2"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "UNIT_MISMATCH",
+            "itemKey": "A",
+            "lineKey": "L1",
+            "field": "unit"
+          },
+          {
+            "code": "NEGATIVE_INPUT",
+            "itemKey": "A",
+            "lineKey": "L2",
+            "field": "width"
+          }
+        ]
+      },
+      "formula": "R8",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-021",
+      "title": "Non-canonical decimal input is rejected",
+      "stage": "S1-quantity",
+      "category": "invalid-input",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m",
+                "count": "1",
+                "length": "1,5"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "INVALID_DECIMAL",
+            "itemKey": "A",
+            "lineKey": "L1",
+            "field": "length"
+          }
+        ]
+      },
+      "formula": "§3.1",
+      "rounding": null,
+      "traceRequirements": [],
+      "assumptions": [
+        "Localized input (Persian digits, separators) is normalized by the UI layer, not the engine"
+      ],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-022",
+      "title": "Linear quantity with summation",
+      "stage": "S1-quantity",
+      "category": "summation",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m",
+                "count": "1",
+                "length": "12.75"
+              },
+              {
+                "lineKey": "L2",
+                "kind": "addition",
+                "unit": "m",
+                "count": "3",
+                "length": "4.2"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m",
+            "exactQty": "25.35",
+            "qty": "25.35",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "12.75",
+                "signedQty": "12.75"
+              },
+              {
+                "lineKey": "L2",
+                "exactQty": "12.6",
+                "signedQty": "12.6"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "qty = 12.75 + 3×4.2",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-023",
+      "title": "Canonical output form",
+      "stage": "S1-quantity",
+      "category": "decimal-precision",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m2",
+                "count": "1",
+                "length": "2.500",
+                "width": "4.000"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m2",
+            "exactQty": "10",
+            "qty": "10",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "exactQty": "10",
+                "signedQty": "10"
+              }
+            ]
+          }
+        ]
+      },
+      "formula": "2.500 × 4.000 = 10 (canonical, no trailing zeros)",
+      "rounding": null,
+      "traceRequirements": ["T1", "T2", "T3", "T4", "T5"],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    },
+    {
+      "id": "RC-Q-024",
+      "title": "Invalid rounding policy is rejected",
+      "stage": "S1-quantity",
+      "category": "rounding",
+      "input": {
+        "items": [
+          {
+            "itemKey": "A",
+            "unit": "m",
+            "lines": [
+              {
+                "lineKey": "L1",
+                "kind": "addition",
+                "unit": "m",
+                "count": "1",
+                "length": "1"
+              }
+            ],
+            "rounding": {
+              "stage": "item",
+              "scale": 21,
+              "mode": "HALF_UP"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "status": "error",
+        "errors": [
+          {
+            "code": "INVALID_ROUNDING_POLICY",
+            "itemKey": "A",
+            "field": "rounding.scale"
+          }
+        ]
+      },
+      "formula": "§5 scale ∈ 0..20",
+      "rounding": {
+        "stage": "item",
+        "scale": 21,
+        "mode": "HALF_UP"
+      },
+      "traceRequirements": [],
+      "assumptions": [],
+      "source": {
+        "status": "synthetic-generic",
+        "reference": null
+      }
+    }
+  ]
+}

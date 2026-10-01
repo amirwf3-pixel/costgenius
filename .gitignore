@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# playwright E2E artifacts
+apps/web/e2e/.playwright-artifacts/
+
+# playwright E2E session state (written by global-setup, deleted in teardown)
+apps/web/.auth/

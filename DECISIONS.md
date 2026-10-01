@@ -533,8 +533,16 @@ DATABASE` plus `USAGE, CREATE ON SCHEMA drizzle` for the migrator's idempotent
 > `pricebook_editions` registry with database-level guards, the first-boot seed through
 > the normal import gate (directly ACTIVE, bootstrap-admin actor, two seeded audit
 > events), the `estimate_versions.edition_id` binding (backfill + insert-time
-> stamping).** D-PB-1 through D-PB-5 are final (D-PB-3 = B, owner order). The lifecycle
-> routes (#39–43), edition selection and the UI (S2/S3) are NOT implemented.
+> stamping). S2 (the lifecycle API) IMPLEMENTED 2026-09-30: routes #39–#43 — import→
+> DRAFT through the same gate (`422 PRICEBOOK_IMPORT_REJECTED` / `409
+EDITION_ALREADY_EXISTS`), the deterministic list, the detail with the stored import
+> report, atomic activate (four-eyes on DRAFT→ACTIVE, auto-archive of the superseded
+> ACTIVE edition, both events in ONE transaction, the partial unique index deciding
+> races — exactly one winner), archive (DRAFT discard and ACTIVE archive, the legal
+> 0-active state) — and `GET /pricebook/rows` resolving the persisted ACTIVE edition,
+> fail-closed `409 EDITION_NOT_ACTIVE` when none is active.** D-PB-1 through D-PB-5
+> are final (D-PB-3 = B, owner order). Edition selection on version creation, the
+> rows `editionId` parameter and the UI (S3) are NOT implemented.
 
 ## Open decisions
 

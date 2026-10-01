@@ -13,10 +13,16 @@ import {
   canonicalContentOf,
   canonicalJson,
   contentHashOf,
+  ensureActivatable,
+  ensureArchivable,
   isEditionStatus,
   PRICEBOOK_EDITION_STATUSES,
   validateStagedImport,
+  V1_DISCIPLINE,
   type CanonicalEditionContent,
+  type EditionStatus,
+  type PricebookEdition,
+  type PricebookEditionError,
   type StagedPricebookFile,
 } from '../src/index.js';
 
@@ -102,5 +108,119 @@ describe('contentHashOf (§5 dataset identity)', () => {
       ) as unknown as typeof content.edition,
     };
     expect(contentHashOf(shuffled)).toBe(contentHashOf(content));
+  });
+});
+
+/* ------------------------------------------------------------------------------------------------
+ * P8-B S2 — the lifecycle decision layer (§7/§8/§20): the pure guards
+ * -----------------------------------------------------------------------------------------------*/
+
+describe('the S2 lifecycle guards (ensureActivatable / ensureArchivable, CG-IR-PB@0.2.0 §8)', () => {
+  /** An edition skeleton with ONLY the fields the guards decide on. */
+  function editionOf(overrides: { status: EditionStatus; importedBy: string }): PricebookEdition {
+    return {
+      ...readStaged1404AsEdition(),
+      status: overrides.status,
+      importedBy: overrides.importedBy,
+    };
+  }
+
+  function readStaged1404AsEdition(): PricebookEdition {
+    const file = readStaged1404();
+    const content = canonicalContentOf(file);
+    return {
+      editionId: file.edition.id,
+      discipline: V1_DISCIPLINE,
+      year: file.edition.year,
+      title: file.edition.title,
+      organization: file.edition.organization,
+      notificationNumber: file.edition.notificationNumber,
+      notificationDate: file.edition.notificationDate,
+      sourceFileHash: file.edition.sourceFileHash ?? 'source-hash',
+      contentHash: contentHashOf(content),
+      content,
+      importReport: validateStagedImport(file),
+      status: 'DRAFT',
+      supersedesEditionId: null,
+      importedBy: 'importer-1',
+      importedAt: '2026-01-01T00:00:00Z',
+      activatedBy: null,
+      activatedAt: null,
+      archivedBy: null,
+      archivedAt: null,
+    };
+  }
+
+  /** Runs a guard, returning its error code — undefined when it passes. */
+  function guardCode(work: () => void): string | undefined {
+    try {
+      work();
+      return undefined;
+    } catch (error) {
+      const lifecycleError = error as PricebookEditionError;
+      expect(lifecycleError.name).toBe('PricebookEditionError');
+      return lifecycleError.code;
+    }
+  }
+
+  it('DRAFT + a DIFFERENT activator is activatable (the normal four-eyes-clean handover)', () => {
+    expect(
+      guardCode(() => {
+        ensureActivatable(editionOf({ status: 'DRAFT', importedBy: 'importer-1' }), 'steward-2');
+      }),
+    ).toBeUndefined();
+  });
+
+  it('DRAFT + the IMPORTER as activator → 403 EDITION_SELF_ACTIVATION_FORBIDDEN (four-eyes)', () => {
+    expect(
+      guardCode(() => {
+        ensureActivatable(editionOf({ status: 'DRAFT', importedBy: 'importer-1' }), 'importer-1');
+      }),
+    ).toBe('EDITION_SELF_ACTIVATION_FORBIDDEN');
+  });
+
+  it('ARCHIVED + the IMPORTER as activator is ALLOWED — four-eyes does not apply to re-activation (§8)', () => {
+    expect(
+      guardCode(() => {
+        ensureActivatable(
+          editionOf({ status: 'ARCHIVED', importedBy: 'importer-1' }),
+          'importer-1',
+        );
+      }),
+    ).toBeUndefined();
+  });
+
+  it('ACTIVE (any activator) → 409 EDITION_ALREADY_ACTIVE — checked before four-eyes', () => {
+    expect(
+      guardCode(() => {
+        ensureActivatable(editionOf({ status: 'ACTIVE', importedBy: 'importer-1' }), 'steward-2');
+      }),
+    ).toBe('EDITION_ALREADY_ACTIVE');
+  });
+
+  it('DRAFT and ACTIVE are archivable; ARCHIVED → 409 EDITION_ALREADY_ARCHIVED', () => {
+    expect(
+      guardCode(() => {
+        ensureArchivable(editionOf({ status: 'DRAFT', importedBy: 'x' }));
+      }),
+    ).toBeUndefined();
+    expect(
+      guardCode(() => {
+        ensureArchivable(editionOf({ status: 'ACTIVE', importedBy: 'x' }));
+      }),
+    ).toBeUndefined();
+    expect(
+      guardCode(() => {
+        ensureArchivable(editionOf({ status: 'ARCHIVED', importedBy: 'x' }));
+      }),
+    ).toBe('EDITION_ALREADY_ARCHIVED');
+  });
+
+  it('every guard error carries the §20 code and the stable mapper discriminator', () => {
+    expect(
+      guardCode(() => {
+        ensureActivatable(editionOf({ status: 'ACTIVE', importedBy: 'x' }), 'y');
+      }),
+    ).toBe('EDITION_ALREADY_ACTIVE');
   });
 });

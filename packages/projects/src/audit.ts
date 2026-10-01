@@ -61,7 +61,8 @@ export type AuditAction =
   | 'user.role_changed'
   | 'user.deactivated'
   | 'pricebook_edition.imported'
-  | 'pricebook_edition.activated';
+  | 'pricebook_edition.activated'
+  | 'pricebook_edition.archived';
 
 /** The resource kinds of the catalog: the §4.3 domain resources, the governance user and
  *  (P8-B, CG-IR-PB@0.2.0 §16) the pricebook edition. */
@@ -352,10 +353,11 @@ export function takeoffDocumentApproved(
 
 /* ------------------------------------------------------------------------------------------------
  * Pricebook-edition events (CG-IR-PRICEBOOK-SPEC@0.2.0 §16 — P8-B). `projectId` is null
- * on both (editions are not project-scoped). S1 persists editions and seeds 1404, so
- * exactly these two actions are reachable today — through the seed (details carry
- * `seeded: true`). The third catalog entry of §16, `pricebook_edition.archived`, joins
- * with the S2 lifecycle routes; deliberately NOT added before a writer exists.
+ * on all three (editions are not project-scoped). S1 persists editions and seeds 1404,
+ * so `imported`/`activated` are reachable through the seed (details carry `seeded:
+ * true`); S2's lifecycle routes add the third catalog entry, `pricebook_edition.archived`
+ * — written by the archive command AND by activation's auto-archive of the superseded
+ * ACTIVE edition, in the same transaction as the mutation.
  * -----------------------------------------------------------------------------------------------*/
 
 /**
@@ -403,6 +405,30 @@ export function pricebookEditionActivated(
       contentHash: edition.contentHash,
       supersededEditionId,
       ...(seeded ? { seeded: true } : {}),
+    },
+  );
+}
+
+/**
+ * `pricebook_edition.archived` (CG-IR-PB@0.2.0 §16, P8-B S2) — resource: the archived
+ * edition; details: `{contentHash, previousStatus}` with `previousStatus` ∈
+ * {`DRAFT`, `ACTIVE`}. Written by the archive command and by activation's auto-archive
+ * of the superseded ACTIVE edition — always in the SAME transaction as the mutation.
+ */
+export function pricebookEditionArchived(
+  actor: Actor,
+  edition: PricebookEdition,
+  previousStatus: 'DRAFT' | 'ACTIVE',
+): AuditEventSpec {
+  return domainEvent(
+    actor,
+    'pricebook_edition.archived',
+    'pricebook_edition',
+    edition.editionId,
+    null,
+    {
+      contentHash: edition.contentHash,
+      previousStatus,
     },
   );
 }

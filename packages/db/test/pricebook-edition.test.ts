@@ -658,3 +658,187 @@ describe('P8-B S1 version binding — stamp at insert, backfill once, immutable 
     await fixture.pg.close();
   });
 });
+
+/* ------------------------------------------------------------------------------------------------
+ * P8-B S2 — the lifecycle repository writes: list, guarded activate, guarded archive
+ * -----------------------------------------------------------------------------------------------*/
+
+describe('P8-B S2 repository — listEditions and the two guarded lifecycle writes', () => {
+  it('lists every edition in the deterministic (importedAt, editionId) order', async () => {
+    const { pg, editions, adminId } = await createFixture();
+    const base = readStaged1404();
+    // three editions with deliberately shuffled insertion order and distinct importedAt
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1405-abniye', '1405'),
+      importedBy: adminId,
+      importedAt: '2026-03-01T00:00:00Z',
+    });
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye', '1404'),
+      importedBy: adminId,
+      importedAt: '2026-01-01T00:00:00Z',
+    });
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye-err1', '1404'),
+      importedBy: adminId,
+      importedAt: '2026-01-01T00:00:00Z', // SAME instant as 1404 → editionId breaks the tie
+    });
+    const list = await editions.listEditions();
+    expect(list.map((edition) => edition.editionId)).toEqual([
+      'ir-1404-abniye',
+      'ir-1404-abniye-err1',
+      'ir-1405-abniye',
+    ]);
+    await pg.close();
+  });
+
+  it('activateEdition archives the still-ACTIVE previous edition and stamps the target (clearing stale archive columns)', async () => {
+    const { pg, editions, adminId } = await createFixture();
+    const base = readStaged1404();
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye', '1404'),
+      status: 'ACTIVE',
+      importedBy: adminId,
+    });
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1405-abniye', '1405'),
+      importedBy: adminId,
+      // a stale archive stamp from an earlier lifecycle of the same immutable content
+      archivedBy: adminId,
+      archivedAt: '2025-12-01T00:00:00Z',
+    });
+    const won = await editions.activateEdition(
+      'ir-1405-abniye',
+      adminId,
+      '2026-06-01T00:00:00Z',
+      'ir-1404-abniye',
+    );
+    expect(won).toBe(true);
+    const rows = (
+      await pg.query<{
+        edition_id: string;
+        status: string;
+        activated_by: string | null;
+        activated_at: string | null;
+        archived_by: string | null;
+        archived_at: string | null;
+      }>(
+        'select edition_id, status, activated_by, activated_at, archived_by, archived_at from pricebook_editions order by edition_id',
+      )
+    ).rows;
+    expect(rows).toEqual([
+      {
+        edition_id: 'ir-1404-abniye',
+        status: 'ARCHIVED',
+        activated_by: null,
+        activated_at: null,
+        archived_by: adminId,
+        archived_at: '2026-06-01T00:00:00Z',
+      },
+      {
+        edition_id: 'ir-1405-abniye',
+        status: 'ACTIVE',
+        activated_by: adminId,
+        activated_at: '2026-06-01T00:00:00Z',
+        archived_by: null, // the stale stamp of the earlier lifecycle is cleared
+        archived_at: null,
+      },
+    ]);
+    await pg.close();
+  });
+
+  it('activateEdition returns false for an already-ACTIVE target (the sequential 409) and leaves everything untouched', async () => {
+    const { pg, editions, adminId } = await createFixture();
+    const base = readStaged1404();
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye', '1404'),
+      status: 'ACTIVE',
+      importedBy: adminId,
+    });
+    const before = (
+      await pg.query('select * from pricebook_editions order by edition_id')
+    ).rows.map((row) => JSON.stringify(row));
+    const won = await editions.activateEdition(
+      'ir-1404-abniye',
+      adminId,
+      '2026-06-01T00:00:00Z',
+      null,
+    );
+    expect(won).toBe(false);
+    const after = (await pg.query('select * from pricebook_editions order by edition_id')).rows.map(
+      (row) => JSON.stringify(row),
+    );
+    expect(after).toEqual(before); // zero mutation, zero events is the caller's contract
+    await pg.close();
+  });
+
+  it("activateEdition surfaces the one_active unique violation when the caller's previous-active read went stale (the §9 race outcome)", async () => {
+    const { pg, editions, adminId } = await createFixture();
+    const base = readStaged1404();
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye', '1404'),
+      status: 'ACTIVE',
+      importedBy: adminId,
+    });
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1405-abniye', '1405'),
+      importedBy: adminId,
+    });
+    // The race: this caller read NO previous active edition (another activation won
+    // and committed in between), so it archives nothing and activates its target —
+    // the partial unique index refuses the second ACTIVE row, deterministically.
+    await expectFailure(
+      () => editions.activateEdition('ir-1405-abniye', adminId, '2026-06-01T00:00:00Z', null),
+      /pricebook_editions_one_active/,
+    );
+    // the winner is untouched — still the only ACTIVE edition
+    expect(
+      (
+        await pg.query<{ edition_id: string }>(
+          "select edition_id from pricebook_editions where status = 'ACTIVE'",
+        )
+      ).rows.map((row) => row.edition_id),
+    ).toEqual(['ir-1404-abniye']);
+    await pg.close();
+  });
+
+  it('archiveEdition guards the already-ARCHIVED target (false, zero mutation) and stamps DRAFT/ACTIVE alike', async () => {
+    const { pg, editions, adminId } = await createFixture();
+    const base = readStaged1404();
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1404-abniye', '1404'),
+      status: 'ACTIVE',
+      importedBy: adminId,
+    });
+    await editions.insertEdition({
+      ...derivedEdition(base, 'ir-1405-abniye', '1405'),
+      importedBy: adminId,
+    });
+    const first = await editions.archiveEdition('ir-1405-abniye', adminId, '2026-06-01T00:00:00Z');
+    expect(first).toBe(true);
+    const second = await editions.archiveEdition('ir-1405-abniye', adminId, '2026-06-02T00:00:00Z');
+    expect(second).toBe(false); // already archived — the sequential 409
+    const row = (
+      await pg.query<{ status: string; archived_by: string | null; archived_at: string | null }>(
+        'select status, archived_by, archived_at from pricebook_editions where edition_id = $1',
+        ['ir-1405-abniye'],
+      )
+    ).rows[0];
+    expect(row).toEqual({
+      status: 'ARCHIVED',
+      archived_by: adminId,
+      archived_at: '2026-06-01T00:00:00Z',
+    });
+    // ACTIVE → ARCHIVED (the 0-active path)
+    const active = await editions.archiveEdition('ir-1404-abniye', adminId, '2026-06-03T00:00:00Z');
+    expect(active).toBe(true);
+    expect(
+      (
+        await pg.query<{ n: string }>(
+          "select count(*)::text as n from pricebook_editions where status = 'ACTIVE'",
+        )
+      ).rows[0]?.n,
+    ).toBe('0');
+    await pg.close();
+  });
+});

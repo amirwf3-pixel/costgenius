@@ -12,12 +12,16 @@ imports this file through the same validation gate into the `pricebook_editions`
 registry (directly ACTIVE; `contentHash`
 `a669ddd4c315ee26fda6e43cff56eeac05cc03178ed8a665a13f49ff814de786`), and the pure
 edition domain model (`edition.ts`: statuses, canonical content, content hash) lives
-here. Current scope is the single official 1404 edition; regional-coefficient VALUES
-remain an external dependency (circular 94/69416 annex) and are never substituted. The
-edition lifecycle contract is
+here, and since P8-B S2 the pure lifecycle decision layer (`edition-lifecycle.ts`:
+the §8 transition guards and the §20 error codes of the activate/archive commands)
+lives here too. Current scope is the single official 1404 edition;
+regional-coefficient VALUES remain an external dependency (circular 94/69416 annex)
+and are never substituted. The edition lifecycle contract is
 [`spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md`](spec/CG-IR-PRICEBOOK-SPEC@0.2.0.md) — contract
-closed 2026-09-29 (D-PB-1..D-PB-5 final); **S1 (persistence + seed) implemented
-2026-09-30; the lifecycle routes and UI (S2/S3) not implemented**;
+closed 2026-09-29 (D-PB-1..D-PB-5 final); **S1 (persistence + seed) and S2 (the
+lifecycle API: routes #39–#43, the ACTIVE-resolving default edition search) implemented
+2026-09-30; edition selection, the rows `editionId` parameter and the UI (S3) not
+implemented**;
 [`spec/CG-IR-PRICEBOOK-SPEC@0.1.0.md`](spec/CG-IR-PRICEBOOK-SPEC@0.1.0.md) is the
 superseded historical verification record of the official 1404 source (its lifecycle
 model is superseded by 0.2.0). `spec/fixtures/` holds a **synthetic** fixture used

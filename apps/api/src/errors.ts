@@ -41,6 +41,13 @@
  *                               §5) and SIGNOFF_ALREADY_GIVEN (re-approval); the
  *                               non-finalized precondition keeps its existing code
  *                               (VERSION_NOT_FINALIZED / TAKEOFF_INVALID_TRANSITION).
+ * - 404/409/422/403 editions  — P8-B S2 (CG-IR-PB@0.2.0 §20): EDITION_NOT_FOUND,
+ *   (P8-B S2)                  EDITION_ALREADY_EXISTS, EDITION_ALREADY_ACTIVE (also
+ *                               the unique-index race outcome), EDITION_ALREADY_
+ *                               ARCHIVED, EDITION_NOT_ACTIVE (the 0-active state),
+ *                               EDITION_SELF_ACTIVATION_FORBIDDEN (four-eyes) and
+ *                               PRICEBOOK_IMPORT_REJECTED (the staged-import gate's
+ *                               failures ride in details).
  * - 422 binding/S4 failures   — BOQ_LINES_REJECTED (S2 codes in details),
  *                               ESTIMATE_INPUT_ERROR, VERSION_WITHOUT_BUILDING,
  *                               TAKEOFF_QUANTITIES_REJECTED (D-015: calc-engine S1
@@ -92,6 +99,17 @@ const USER_MANAGEMENT_STATUS: Readonly<Record<string, number>> = {
   USER_NOT_FOUND: 404,
   CANNOT_DEACTIVATE_LAST_ORG_ADMIN: 409,
   FORBIDDEN: 403,
+};
+
+/** The §20 edition-lifecycle codes of CG-IR-PRICEBOOK-SPEC@0.2.0 (P8-B S2). */
+const PRICEBOOK_EDITION_STATUS: Readonly<Record<string, number>> = {
+  PRICEBOOK_IMPORT_REJECTED: 422,
+  EDITION_ALREADY_EXISTS: 409,
+  EDITION_NOT_FOUND: 404,
+  EDITION_ALREADY_ACTIVE: 409,
+  EDITION_ALREADY_ARCHIVED: 409,
+  EDITION_SELF_ACTIVATION_FORBIDDEN: 403,
+  EDITION_NOT_ACTIVE: 409,
 };
 
 const DB_STATUS: Readonly<Record<string, number>> = {
@@ -161,6 +179,23 @@ export function mapError(error: unknown): ApiErrorMapping {
     // self-deactivation 403, which carries no role detail (it is not a role denial).
     const status = USER_MANAGEMENT_STATUS[code] ?? 400;
     return { status, body: { error: { code, message: errorMessage(error) } } };
+  }
+  if (name === 'PricebookEditionError' && code !== undefined) {
+    // P8-B S2 (CG-IR-PB@0.2.0 §20): the edition-lifecycle codes — status decided by
+    // the table above; `details` (e.g. the import gate's failures) rides along only
+    // when the error carries one, keeping the error body shape exactly stable.
+    const status = PRICEBOOK_EDITION_STATUS[code] ?? 500;
+    const details = (error as { details?: unknown }).details;
+    return {
+      status,
+      body: {
+        error: {
+          code,
+          message: errorMessage(error),
+          ...(details !== undefined ? { details } : {}),
+        },
+      },
+    };
   }
   if (name === 'ProjectsError' && code !== undefined) {
     const status = PROJECTS_STATUS[code] ?? 400;

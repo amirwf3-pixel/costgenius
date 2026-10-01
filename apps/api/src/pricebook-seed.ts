@@ -32,6 +32,7 @@ import {
   type StagedPricebookFile,
 } from '@costgenius/pricebook';
 import { appendAuditEvent, type Transact } from './audit.js';
+import { isUniqueViolation } from './pricebook-lifecycle.js';
 import { pricebookEditionActivated, pricebookEditionImported } from '@costgenius/projects';
 import { DEFAULT_DATASET_PATH } from './dataset.js';
 
@@ -49,16 +50,6 @@ export interface PricebookSeedDependencies {
   readonly clock: () => string;
   /** The staged-import JSON to seed (defaults to the in-repo verified 1404 dataset). */
   readonly datasetPath?: string;
-}
-
-/** PostgreSQL unique-violation (Drizzle wraps the driver error — walk the cause chain). */
-function isUniqueViolation(error: unknown): boolean {
-  let current: unknown = error;
-  while (typeof current === 'object' && current !== null) {
-    if ((current as { code?: unknown }).code === '23505') return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
 }
 
 /**

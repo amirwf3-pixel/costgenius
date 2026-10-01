@@ -33,7 +33,8 @@ import type {
   TakeoffLineInput,
   RoundingRuleEntry,
 } from '@costgenius/projects';
-import type { PublishedDataset } from '@costgenius/pricebook';
+import type { PricebookEdition, PublishedDataset } from '@costgenius/pricebook';
+import { PricebookEditionError } from '@costgenius/pricebook';
 import type {
   Actor,
   AuditEventRepository,
@@ -102,6 +103,13 @@ import {
 } from '@costgenius/projects';
 import { mapError, notFound } from './errors.js';
 import {
+  activatePricebookEdition,
+  archivePricebookEdition,
+  importPricebookEdition,
+  type PricebookLifecycleDependencies,
+} from './pricebook-lifecycle.js';
+import { ActiveEditionDatasets } from './edition-datasets.js';
+import {
   addLinesSchema,
   archiveTakeoffSchema,
   calculateSchema,
@@ -115,6 +123,8 @@ import {
   followUpTakeoffSchema,
   loginSchema,
   passwordChangeSchema,
+  editionIdParamSchema,
+  pricebookImportBodySchema,
   pricebookLookupQuerySchema,
   projectIdParamSchema,
   saveTakeoffDraftSchema,
@@ -552,15 +562,29 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     return await reply.code(200).send(project);
   });
 
-  // ---- Pricebook code lookup (Phase 18 UI autocomplete; presentation only) ---------------
-  // A read-only filter over the ALREADY published dataset for the add-line dialog's
-  // search box. It never resolves estimate lines: binding stays exact-code in
-  // POST /estimate-versions/:id/lines. Deterministic: published order, capped results.
+  // ---- Pricebook (Phase 18 lookup + the P8-B S2 edition lifecycle, #39–#43) ----------------
+  //
+  // GET /pricebook/rows (Phase 18 UI autocomplete; presentation only): a read-only
+  // filter over the published dataset for the add-line dialog's search box — it never
+  // resolves estimate lines (binding stays exact-code in POST /estimate-versions/:id/
+  // lines). Since P8-B S2 the searched dataset is the discipline's PERSISTED ACTIVE
+  // edition (CG-IR-PB@0.2.0 §9/§17): the database is the source of truth for editions,
+  // never the boot-time in-memory file. Fail-closed in the 0-active state: 409
+  // EDITION_NOT_ACTIVE, never a fallback to a DRAFT/ARCHIVED/latest edition and never
+  // an empty 200. Deterministic: published order, capped results.
+  const editionDatasets = new ActiveEditionDatasets(deps.repositories.editions);
 
   app.get('/pricebook/rows', async (request, reply) => {
     const query = pricebookLookupQuerySchema.parse(request.query);
+    const dataset = await editionDatasets.activeDataset();
+    if (dataset === null) {
+      throw new PricebookEditionError(
+        'EDITION_NOT_ACTIVE',
+        'no ACTIVE pricebook edition exists for the discipline (the 0-active state is legal); activate an edition to restore the default search',
+      );
+    }
     const needle = query.search;
-    const matches = deps.dataset.rows
+    const matches = dataset.rows
       .filter((row) => row.code.startsWith(needle) || row.description.includes(needle))
       .slice(0, query.limit)
       .map((row) => ({
@@ -572,7 +596,97 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
         basePrice: row.basePrice,
         status: row.status,
       }));
-    return await reply.code(200).send({ rows: matches, edition: deps.dataset.edition.id });
+    return await reply.code(200).send({ rows: matches, edition: dataset.edition.id });
+  });
+
+  // The #39 edition representation (§17): exactly the contract's fields — identity,
+  // provenance, lifecycle state and the row count; never the row bulk, never the
+  // import report (that is #40's detail), never credential material.
+  const editionSummary = (edition: PricebookEdition): Record<string, unknown> => ({
+    editionId: edition.editionId,
+    discipline: edition.discipline,
+    year: edition.year,
+    title: edition.title,
+    organization: edition.organization,
+    notificationNumber: edition.notificationNumber,
+    notificationDate: edition.notificationDate,
+    sourceFileHash: edition.sourceFileHash,
+    contentHash: edition.contentHash,
+    rowCount: edition.importReport.rowCount,
+    status: edition.status,
+    supersedesEditionId: edition.supersedesEditionId,
+    importedBy: edition.importedBy,
+    importedAt: edition.importedAt,
+    activatedAt: edition.activatedAt,
+    archivedAt: edition.archivedAt,
+  });
+
+  // #39 — list every edition, deterministic (importedAt, editionId) order (Viewer+).
+  app.get('/pricebook/editions', async (_request, reply) => {
+    const editions = await deps.repositories.editions.listEditions();
+    return await reply.code(200).send({ editions: editions.map(editionSummary) });
+  });
+
+  // #40 — the edition detail, including the stored importReport (the complete
+  // validation evidence). Read-only; rows stay searchable via GET /pricebook/rows.
+  app.get('/pricebook/editions/:editionId', async (request, reply) => {
+    const editionId = editionIdParamSchema.parse(
+      (request.params as { editionId: unknown }).editionId,
+    );
+    const edition = await deps.repositories.editions.findByEditionId(editionId);
+    if (edition === undefined) {
+      throw new PricebookEditionError(
+        'EDITION_NOT_FOUND',
+        `no pricebook edition "${editionId}" exists`,
+      );
+    }
+    return await reply
+      .code(200)
+      .send({ ...editionSummary(edition), importReport: edition.importReport });
+  });
+
+  // The shared lifecycle dependencies of the three mutations (#41–#43).
+  const lifecycleDeps: PricebookLifecycleDependencies = {
+    editions: deps.repositories.editions,
+    transact: deps.transact,
+    clock: deps.clock,
+  };
+
+  // #41 — import a staged-import JSON document as a new DRAFT edition
+  // (data_steward+). The route body limit is raised above the global 1 MiB default
+  // because a full staged pricebook document is larger (the verified 1404 file is
+  // ~1.3 MiB); every other route keeps the default.
+  app.post('/pricebook/editions', { bodyLimit: 8 * 1024 * 1024 }, async (request, reply) => {
+    const auth = requireAuth(request);
+    const file = pricebookImportBodySchema.parse(request.body);
+    const imported = await importPricebookEdition(lifecycleDeps, actorOf(auth), file);
+    return await reply
+      .code(201)
+      .send({ edition: editionSummary(imported.edition), importReport: imported.importReport });
+  });
+
+  // #42 — DRAFT→ACTIVE / ARCHIVED→ACTIVE (data_steward+, four-eyes on DRAFT→ACTIVE):
+  // atomic; the previous ACTIVE edition of the discipline is auto-archived in the same
+  // transaction; both events commit with it. Empty body.
+  app.post('/pricebook/editions/:editionId/activate', async (request, reply) => {
+    const auth = requireAuth(request);
+    const editionId = editionIdParamSchema.parse(
+      (request.params as { editionId: unknown }).editionId,
+    );
+    const edition = await activatePricebookEdition(lifecycleDeps, actorOf(auth), editionId);
+    return await reply.code(200).send(editionSummary(edition));
+  });
+
+  // #43 — DRAFT→ARCHIVED (discard) / ACTIVE→ARCHIVED (data_steward+). Archiving the
+  // only ACTIVE edition is legal (D-PB-4 = A — the 0-active state); nothing is
+  // auto-activated. Empty body.
+  app.post('/pricebook/editions/:editionId/archive', async (request, reply) => {
+    const auth = requireAuth(request);
+    const editionId = editionIdParamSchema.parse(
+      (request.params as { editionId: unknown }).editionId,
+    );
+    const edition = await archivePricebookEdition(lifecycleDeps, actorOf(auth), editionId);
+    return await reply.code(200).send(editionSummary(edition));
   });
 
   // ---- Estimate listing (Phase 17 workflow: a project's estimates) -----------------------

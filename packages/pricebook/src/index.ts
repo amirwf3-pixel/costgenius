@@ -55,10 +55,17 @@ export {
   contentHashOf,
   isEditionStatus,
   PRICEBOOK_EDITION_STATUSES,
+  V1_DISCIPLINE,
   type CanonicalEditionContent,
   type EditionStatus,
   type PricebookEdition,
 } from './edition.js';
+export {
+  ensureActivatable,
+  ensureArchivable,
+  PricebookEditionError,
+  type PricebookEditionErrorCode,
+} from './edition-lifecycle.js';
 export {
   ImportValidationError,
   publishStagedImport,

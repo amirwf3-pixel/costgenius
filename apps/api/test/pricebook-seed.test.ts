@@ -195,7 +195,15 @@ describe('P8-B S1 seed — first boot (clean database)', () => {
         `select user_id from users where username = '${TEST_ADMIN.username}'`,
       )
     ).rows[0];
-    const [imported, activated] = events;
+    // the two events share one clock instant (FIXED_INSTANT), so their read order is
+    // decided by random event ids — assert BY ACTION, never by position (the S1
+    // positional destructuring was a latent 50/50 flake)
+    expect(events.map((event) => event.action).sort()).toEqual([
+      'pricebook_edition.activated',
+      'pricebook_edition.imported',
+    ]);
+    const imported = events.find((event) => event.action === 'pricebook_edition.imported');
+    const activated = events.find((event) => event.action === 'pricebook_edition.activated');
     expect(imported?.action).toBe('pricebook_edition.imported');
     expect(imported?.resourceType).toBe('pricebook_edition');
     expect(imported?.resourceId).toBe('ir-1404-abniye');

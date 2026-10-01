@@ -8,14 +8,15 @@
  * ONE transaction. Duplicate identity or duplicate content surfaces as PostgreSQL's
  * unique-violation (23505): content-addressable semantics, nothing merged or updated.
  *
- * There is no update, no delete and no lifecycle method here: content and provenance
- * are immutable from import (§11 — the migration's trigger guards enforce it even for
- * the table owner), and activate/archive arrive with the S2 routes. The backfill is
- * the one deliberate write to another table: it only ever fills NULL bindings of
- * matching-year rows (the binding-immutable trigger refuses any change of a set
- * binding), so it can never rebind a version.
+ * The S2 lifecycle writes (`activateEdition`/`archiveEdition`) are the only UPDATEs
+ * this table ever receives: they touch the lifecycle columns ONLY (status,
+ * activated_by/at, archived_by/at) — the migration's trigger guards freeze content
+ * and provenance for EVERY role including the table owner (§11), and there is no
+ * delete. The backfill is the one deliberate write to another table: it only ever
+ * fills NULL bindings of matching-year rows (the binding-immutable trigger refuses
+ * any change of a set binding), so it can never rebind a version.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import type { PricebookEditionRepository } from '@costgenius/projects';
 import { isEditionStatus, type PricebookEdition } from '@costgenius/pricebook';
 import type { DbExecutor } from '../db-executor.js';
@@ -143,5 +144,67 @@ export class DrizzlePricebookEditionRepository implements PricebookEditionReposi
       .where(and(isNull(estimateVersions.editionId), eq(estimateVersions.edition, edition.year)))
       .returning({ versionId: estimateVersions.versionId });
     return bound.length;
+  }
+
+  async listEditions(): Promise<readonly PricebookEdition[]> {
+    const rows = await this.#db
+      .select()
+      .from(pricebookEditions)
+      .orderBy(pricebookEditions.importedAt, pricebookEditions.editionId);
+    return rows.map(editionFromRow);
+  }
+
+  async activateEdition(
+    editionId: string,
+    activatedBy: string,
+    activatedAt: string,
+    previousActiveEditionId: string | null,
+  ): Promise<boolean> {
+    // The superseded edition is archived only if it is STILL ACTIVE — a concurrent
+    // lifecycle change of that row is left exactly as the winner of the race left it.
+    if (previousActiveEditionId !== null) {
+      await this.#db
+        .update(pricebookEditions)
+        .set({ status: 'ARCHIVED', archivedBy: activatedBy, archivedAt: activatedAt })
+        .where(
+          and(
+            eq(pricebookEditions.editionId, previousActiveEditionId),
+            eq(pricebookEditions.status, 'ACTIVE'),
+          ),
+        );
+    }
+    // The guarded activation: an already-ACTIVE target matches zero rows (false →
+    // the sequential 409); a concurrent different-edition activation surfaces as the
+    // one_active partial unique index's unique-violation instead. A re-activation
+    // clears the stale archive stamp of the edition's earlier lifecycle (§8).
+    const activated = await this.#db
+      .update(pricebookEditions)
+      .set({
+        status: 'ACTIVE',
+        activatedBy: activatedBy,
+        activatedAt: activatedAt,
+        archivedBy: null,
+        archivedAt: null,
+      })
+      .where(
+        and(eq(pricebookEditions.editionId, editionId), ne(pricebookEditions.status, 'ACTIVE')),
+      )
+      .returning({ editionId: pricebookEditions.editionId });
+    return activated.length === 1;
+  }
+
+  async archiveEdition(
+    editionId: string,
+    archivedBy: string,
+    archivedAt: string,
+  ): Promise<boolean> {
+    const archived = await this.#db
+      .update(pricebookEditions)
+      .set({ status: 'ARCHIVED', archivedBy: archivedBy, archivedAt: archivedAt })
+      .where(
+        and(eq(pricebookEditions.editionId, editionId), ne(pricebookEditions.status, 'ARCHIVED')),
+      )
+      .returning({ editionId: pricebookEditions.editionId });
+    return archived.length === 1;
   }
 }

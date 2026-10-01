@@ -12,8 +12,10 @@
  * never a numeric rank.
  *
  * Sign-off routes (#37/#38 of the §3 matrix, Reviewer+) joined this table with the
- * S4 sign-off stage — the two entries below are the ONLY S4 additions; every other
- * policy is unchanged since S2.
+ * S4 sign-off stage; the P8-B S2 edition-lifecycle routes (#39–#43 of the pricebook
+ * contract's §17 continuation) added the `data_steward` class — the role CG-GOV §2.1
+ * reserved for exactly this pipeline (CG-IR-PRICEBOOK-SPEC@0.2.0 §15), yielding
+ * precisely {data_steward, org_admin}.
  */
 import type { UserRole } from '@costgenius/projects';
 
@@ -22,7 +24,8 @@ import type { UserRole } from '@costgenius/projects';
  * authenticated role (the S1 auth surface); the others name the MINIMUM role of their
  * class, so `requiredRoleFor` can answer the §2.2 `details:{requiredRole}` detail.
  */
-export type RoleRequirement = 'any' | 'viewer' | 'estimator' | 'reviewer' | 'org_admin';
+export type RoleRequirement =
+  'any' | 'viewer' | 'estimator' | 'reviewer' | 'org_admin' | 'data_steward';
 
 /** The role lattice as explicit grant sets (CG-GOV §2.2 — no numeric ranks). */
 const ROLE_GRANTS: Readonly<Record<RoleRequirement, ReadonlySet<UserRole>>> = {
@@ -31,6 +34,9 @@ const ROLE_GRANTS: Readonly<Record<RoleRequirement, ReadonlySet<UserRole>>> = {
   estimator: new Set(['org_admin', 'estimator']),
   reviewer: new Set(['org_admin', 'reviewer']),
   org_admin: new Set(['org_admin']),
+  // P8-B S2 (CG-IR-PB@0.2.0 §15): data_steward+ = {data_steward, org_admin} — the
+  // pricebook pipeline class; estimator/reviewer stay incomparable with it.
+  data_steward: new Set(['org_admin', 'data_steward']),
 };
 
 /** Does `role` satisfy `requirement`? The single authorization predicate of the API. */
@@ -66,6 +72,14 @@ export const ROUTE_POLICIES: Readonly<Record<string, RoleRequirement>> = {
   'GET /projects': 'viewer',
   'GET /projects/:projectId': 'viewer',
   'GET /pricebook/rows': 'viewer',
+  // #39–#43 — the P8-B S2 pricebook-edition lifecycle (CG-IR-PB@0.2.0 §17): reads
+  // are Viewer+ (like every read), mutations are data_steward+ (the pipeline class;
+  // org_admin inherits it through the lattice)
+  'GET /pricebook/editions': 'viewer',
+  'GET /pricebook/editions/:editionId': 'viewer',
+  'POST /pricebook/editions': 'data_steward',
+  'POST /pricebook/editions/:editionId/activate': 'data_steward',
+  'POST /pricebook/editions/:editionId/archive': 'data_steward',
   'GET /projects/:projectId/estimates': 'viewer',
   'POST /projects/:projectId/estimates': 'estimator',
   'GET /estimates/:estimateId': 'viewer',

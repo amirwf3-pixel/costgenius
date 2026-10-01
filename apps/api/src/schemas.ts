@@ -192,6 +192,18 @@ export const pricebookLookupQuerySchema = z
   .strict();
 export type PricebookLookupQuery = z.infer<typeof pricebookLookupQuerySchema>;
 
+/*
+ * P8-B S2 — the pricebook-edition lifecycle request shapes (CG-IR-PRICEBOOK-SPEC@
+ * 0.2.0 §17 #39–#43). The import body is deliberately NOT re-validated here: the
+ * staged-import document is validated atomically by the SAME import gate
+ * (`validateStagedImport`) inside the lifecycle service — a boundary copy of that
+ * schema could only drift from the gate, and every content failure must answer the
+ * ONE contract code (422 PRICEBOOK_IMPORT_REJECTED with the gate's failures under
+ * details), never a 400. The activate/archive commands take an empty body (§17).
+ */
+export const editionIdParamSchema = z.string().min(1).max(200);
+export const pricebookImportBodySchema = z.unknown();
+
 /* ------------------------------------------------------------------------------------------------
  * Full Takeoff documents (D-016, CG-FT-TAKEOFF-SPEC@0.1.0 §4) — the stateful takeoff
  * resource family beside the unchanged D-015 stateless preview. Mutations are POST-only

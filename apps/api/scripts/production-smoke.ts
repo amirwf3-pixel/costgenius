@@ -1738,6 +1738,225 @@ async function main(): Promise<void> {
       `status=${String(postRestartProject.status)} rows=${String(postRestartEvent.rowCount)} actor=${String(postRestartEvent.rows[0]?.actor_user_id)}`,
     );
 
+    // ---- P8-B S2 — the edition lifecycle on the production path (CG-IR-PB@0.2.0) ----
+    //
+    // A second REAL user (a data steward) imports a synthetic edition; the admin
+    // activates it (four-eyes); the search follows the ACTIVE edition; the 0-active
+    // state fails closed; the four-eyes rule and duplicate imports answer their exact
+    // codes; and the golden renders stay byte-identical across the whole churn.
+    const stewardCreated = await call('POST', '/users', {
+      username: 'smoke-steward',
+      password: 'smoke-steward-password-123',
+      role: 'data_steward',
+    });
+    check(
+      'S2: the data steward account is created (org_admin grants the pipeline role)',
+      stewardCreated.status === 201,
+    );
+    const stewardLogin = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'smoke-steward', password: 'smoke-steward-password-123' }),
+    });
+    const stewardSetCookie = stewardLogin.headers
+      .getSetCookie()
+      .find((cookie) => cookie.startsWith('cg_session='));
+    if (stewardSetCookie === undefined) throw new Error('smoke steward login returned no cookie');
+    const stewardCookieValue = stewardSetCookie.split(';')[0];
+    if (stewardCookieValue === undefined) throw new Error('smoke steward cookie malformed');
+    const stewardCookie: string = stewardCookieValue;
+    const stewardCall = async (
+      method: string,
+      path: string,
+      body?: unknown,
+    ): Promise<{ status: number; data: unknown }> => {
+      const response = await fetch(BASE + path, {
+        method,
+        headers: { 'content-type': 'application/json', cookie: stewardCookie },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await response.text();
+      return { status: response.status, data: text.length > 0 ? JSON.parse(text) : {} };
+    };
+    // the empty-body lifecycle commands (no content-type — exactly like the S4 approve probes)
+    const stewardCommand = async (path: string): Promise<{ status: number; data: unknown }> => {
+      const response = await fetch(BASE + path, {
+        method: 'POST',
+        headers: { cookie: stewardCookie },
+      });
+      const text = await response.text();
+      return { status: response.status, data: text.length > 0 ? JSON.parse(text) : {} };
+    };
+
+    // a synthetic staged document (passes the SAME import gate; unique content)
+    const smokeStagedFile = (tag: string): Record<string, unknown> => ({
+      formatVersion: '1',
+      kind: 'staged-import',
+      edition: {
+        id: `ir-14sm-abniye-${tag}`,
+        title: 'فهرست آزمونی رشته ابنیه',
+        organization: 'سازمان برنامه و بودجه کشور',
+        year: '1412',
+        notificationNumber: null,
+        notificationDate: null,
+        sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+      },
+      rows: [
+        {
+          code: '010101',
+          chapter: 'chapter-1',
+          group: '1',
+          description: `شرح آزمون دود ${tag}`,
+          unit: { label: 'مترمربع', code: 'm2' },
+          basePrice: '2890',
+          status: 'VERIFIED_SPEC_ONLY',
+          sourceRef: {
+            sourceDocument: 'فهرست بهای واحد پایه رشته ابنیه سال ۱۴۰۴',
+            edition: '1404',
+            printedPage: '11',
+            section: 'Chapter 1, Group 1',
+            sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+          },
+        },
+      ],
+    });
+
+    // a viewer CANNOT import (403, requiredRole data_steward) — the RBAC gate on the production path
+    const viewerDeniedImport = await fetch(`${BASE}/pricebook/editions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: viewerCookie ?? '' },
+      body: JSON.stringify(smokeStagedFile('rbac')),
+    });
+    const viewerDeniedBody = (await viewerDeniedImport.json()) as {
+      error?: { code?: string; details?: { requiredRole?: string } };
+    };
+    check(
+      'S2: the viewer is DENIED the edition import (403 FORBIDDEN, requiredRole data_steward)',
+      viewerDeniedImport.status === 403 &&
+        viewerDeniedBody.error?.code === 'FORBIDDEN' &&
+        viewerDeniedBody.error.details?.requiredRole === 'data_steward',
+    );
+
+    const imported = await stewardCall('POST', '/pricebook/editions', smokeStagedFile('main'));
+    check(
+      'S2: the steward imports a staged document → 201 DRAFT (the SAME import gate)',
+      imported.status === 201 &&
+        (imported.data as { edition?: { status?: string } }).edition?.status === 'DRAFT',
+      JSON.stringify(imported.data).slice(0, 200),
+    );
+    const duplicate = await stewardCall('POST', '/pricebook/editions', smokeStagedFile('main'));
+    check(
+      'S2: identical content re-imported → 409 EDITION_ALREADY_EXISTS (nothing stored twice)',
+      duplicate.status === 409 &&
+        (duplicate.data as { error?: { code?: string } }).error?.code === 'EDITION_ALREADY_EXISTS',
+    );
+
+    // four-eyes: the IMPORTER cannot activate their own DRAFT
+    const selfActivation = await stewardCommand('/pricebook/editions/ir-14sm-abniye-main/activate');
+    check(
+      'S2: self-activation of the own DRAFT → 403 EDITION_SELF_ACTIVATION_FORBIDDEN',
+      selfActivation.status === 403 &&
+        (selfActivation.data as { error?: { code?: string } }).error?.code ===
+          'EDITION_SELF_ACTIVATION_FORBIDDEN',
+    );
+
+    // the ADMIN activates: atomic handover — the seeded 1404 is auto-archived
+    const seedHashBefore = await pool.query<{ content_hash: string }>(
+      "SELECT content_hash FROM pricebook_editions WHERE edition_id = 'ir-1404-abniye'",
+    );
+    const activated = await postAs(authCookie, '/pricebook/editions/ir-14sm-abniye-main/activate');
+    check(
+      'S2: the admin activates the edition → 200 ACTIVE (four-eyes clean)',
+      activated.status === 200 && (activated.data as { status?: string }).status === 'ACTIVE',
+    );
+    const lifecycleState = await pool.query<{ edition_id: string; status: string }>(
+      'SELECT edition_id, status FROM pricebook_editions ORDER BY edition_id',
+    );
+    check(
+      'S2: exactly ONE ACTIVE edition — the seeded 1404 was auto-archived in the SAME transaction',
+      lifecycleState.rows.filter((row) => row.status === 'ACTIVE').length === 1 &&
+        lifecycleState.rows.find((row) => row.edition_id === 'ir-14sm-abniye-main')?.status ===
+          'ACTIVE' &&
+        lifecycleState.rows.find((row) => row.edition_id === 'ir-1404-abniye')?.status ===
+          'ARCHIVED',
+      JSON.stringify(lifecycleState.rows),
+    );
+    const lifecycleEvents = await pool.query<{ action: string; resource_id: string }>(
+      "SELECT action, resource_id FROM audit_events WHERE action LIKE 'pricebook_edition.%' ORDER BY action, resource_id",
+    );
+    check(
+      'S2: the handover wrote the activated event AND the superseded archived event',
+      lifecycleEvents.rows.some(
+        (row) =>
+          row.action === 'pricebook_edition.activated' && row.resource_id === 'ir-14sm-abniye-main',
+      ) &&
+        lifecycleEvents.rows.some(
+          (row) =>
+            row.action === 'pricebook_edition.archived' && row.resource_id === 'ir-1404-abniye',
+        ),
+      JSON.stringify(lifecycleEvents.rows),
+    );
+
+    // the default search follows the ACTIVE edition (never the boot-time in-memory dataset)
+    const rowsNew = await call(
+      'GET',
+      `/pricebook/rows?search=${encodeURIComponent('شرح آزمون دود main')}`,
+    );
+    check(
+      'S2: GET /pricebook/rows serves the CURRENT ACTIVE edition (identity follows the lifecycle)',
+      rowsNew.status === 200 &&
+        (rowsNew.data as { edition?: string }).edition === 'ir-14sm-abniye-main',
+    );
+
+    // archive → the legal 0-active state; the default search fails CLOSED
+    const archived = await postAs(authCookie, '/pricebook/editions/ir-14sm-abniye-main/archive');
+    check(
+      'S2: archiving the only ACTIVE edition is legal (D-PB-4 = A) → 200 ARCHIVED',
+      archived.status === 200 && (archived.data as { status?: string }).status === 'ARCHIVED',
+    );
+    const rowsZeroActive = await call('GET', '/pricebook/rows?search=0101');
+    check(
+      'S2: with 0 ACTIVE editions the default search fails closed 409 EDITION_NOT_ACTIVE (never a fallback)',
+      rowsZeroActive.status === 409 &&
+        (rowsZeroActive.data as { error?: { code?: string } }).error?.code === 'EDITION_NOT_ACTIVE',
+    );
+
+    // the golden renders are STILL byte-identical after the whole lifecycle churn (§14)
+    const excelAfterLifecycle = await authFetch(
+      `/estimate-versions/${first.versionId}/render/excel`,
+    );
+    const excelAfterLifecycleHash = await sha256Of(
+      Buffer.from(await excelAfterLifecycle.arrayBuffer()),
+    );
+    check(
+      'S2: the golden Excel bytes are identical across import + activate + archive (§14)',
+      excelAfterLifecycle.status === 200 && excelAfterLifecycleHash === first.excelHash,
+    );
+    const seedHashAfter = await pool.query<{ content_hash: string }>(
+      "SELECT content_hash FROM pricebook_editions WHERE edition_id = 'ir-1404-abniye'",
+    );
+    check(
+      'S2: the seeded edition content hash is untouched by the lifecycle (§11)',
+      seedHashAfter.rows[0]?.content_hash === seedHashBefore.rows[0]?.content_hash,
+    );
+
+    // restore the seeded 1404 as ACTIVE (the steward is four-eyes-clean vs the bootstrap importer)
+    const restored = await stewardCommand('/pricebook/editions/ir-1404-abniye/activate');
+    check(
+      'S2: the next activation restores normal operation (seed re-activated, ARCHIVED → ACTIVE)',
+      restored.status === 200 && (restored.data as { status?: string }).status === 'ACTIVE',
+    );
+    const rowsRestored = await call('GET', '/pricebook/rows?search=0101');
+    check(
+      'S2: the default search serves the restored ACTIVE 1404 edition again',
+      rowsRestored.status === 200 &&
+        (rowsRestored.data as { edition?: string }).edition === 'ir-1404-abniye',
+    );
+
+    // the steward's session must not disturb the exact session-count check below
+    const stewardLogout = await stewardCommand('/auth/logout');
+    check('S2: the steward session logs out cleanly (204)', stewardLogout.status === 204);
+
     // the DB-level append-only proof, straight from the application role's connection
     const pgErrorCode = (error: unknown): string => {
       if (typeof error === 'object' && error !== null && 'code' in error) {

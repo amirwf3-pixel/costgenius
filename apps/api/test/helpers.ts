@@ -89,6 +89,71 @@ export const TEST_ADMIN = {
 } as const;
 
 /**
+ * P8-B S2 — a SYNTHETIC staged-import document for the lifecycle routes (import /
+ * activate / arrange fixtures). Passes the SAME `validateStagedImport` gate as every
+ * edition: the first row is the verified 010101 anchor with its exact pinned values,
+ * the second carries a tag-unique price so every file's contentHash is unique
+ * (content-addressable identity — two files must never collide). The edition id is
+ * deliberately NOT the official 1404 id (the verified-subset floor applies only to
+ * it). Development/test ONLY — no real edition data.
+ */
+export function syntheticStagedFile(tag: string): {
+  formatVersion: '1';
+  kind: 'staged-import';
+  edition: Record<string, unknown>;
+  rows: Array<Record<string, unknown>>;
+} {
+  const safeTag = tag.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+  return {
+    formatVersion: '1',
+    kind: 'staged-import',
+    edition: {
+      id: `ir-14mx-abniye-${safeTag}`,
+      title: 'فهرست آزمونی رشته ابنیه',
+      organization: 'سازمان برنامه و بودجه کشور',
+      year: '1410',
+      notificationNumber: null,
+      notificationDate: null,
+      sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+    },
+    rows: [
+      {
+        code: '010101',
+        chapter: 'chapter-1',
+        group: '1',
+        description: 'خاکبرداری در زمین‌های نرم',
+        unit: { label: 'مترمربع', code: 'm2' },
+        basePrice: '2890',
+        status: 'VERIFIED_SPEC_ONLY',
+        sourceRef: {
+          sourceDocument: 'فهرست بهای واحد پایه رشته ابنیه سال ۱۴۰۴',
+          edition: '1404',
+          printedPage: '11',
+          section: 'Chapter 1, Group 1',
+          sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+        },
+      },
+      {
+        code: `01900${String(safeTag.length % 10)}`,
+        chapter: 'chapter-19',
+        group: '1',
+        description: `قلم آزمون ${safeTag}`,
+        unit: { label: 'مترمربع', code: 'm2' },
+        basePrice: String(1000 + ((safeTag.length * 7) % 900)),
+        status: 'VERIFIED_SPEC_ONLY',
+        sourceRef: {
+          sourceDocument: 'فهرست بهای واحد پایه رشته ابنیه سال ۱۴۰۴',
+          edition: '1404',
+          printedPage: '99',
+          section: 'Chapter 19, Group 1',
+          sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+        },
+      },
+    ],
+  };
+}
+
+/**
  * P8-A S1 test-fixture migration: every existing API test assumes authenticated
  * access, so each test server gets (a) the bootstrap admin created through the REAL
  * `ensureBootstrapAdmin` startup path, and (b) a REAL login through `POST /auth/login`

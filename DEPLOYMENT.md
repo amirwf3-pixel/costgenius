@@ -140,8 +140,9 @@ GRANT USAGE, CREATE ON SCHEMA drizzle TO <app_role>;
 GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO <app_role>;
 -- … everything granted, EXCEPT the audit history (INSERT/SELECT only — append-only):
 REVOKE UPDATE, DELETE ON TABLE audit_events FROM <app_role>;
--- … and EXCEPT the pricebook edition registry (P8-B S1, CG-IR-PB@0.2.0 §18): the app
--- role may read and import editions and update ONLY the lifecycle columns:
+-- … and EXCEPT the pricebook edition registry (P8-B S1/S2, CG-IR-PB@0.2.0 §18): the app
+-- role may read and import editions and update ONLY the lifecycle columns (exactly
+-- what the #42/#43 activate/archive commands write — verified by the real-PG suite):
 REVOKE UPDATE, DELETE ON TABLE pricebook_editions FROM <app_role>;
 GRANT UPDATE (status, activated_by, activated_at, archived_by, archived_at)
   ON TABLE pricebook_editions TO <app_role>;
@@ -156,7 +157,9 @@ therefore requires an equivalent enforceable mechanism, and migration 0004 insta
 `BEFORE UPDATE` / `BEFORE DELETE` triggers on `pricebook_editions` that refuse every
 change to content, provenance or import identity (and every delete) **for any role,
 including the owner**, while leaving the lifecycle columns writable for the S2
-activate/archive commands. The column-limited grants above are the additional,
+activate/archive commands (P8-B S2 — implemented; the restricted-role proof runs the
+whole lifecycle through the app role and still answers 42501 on content). The
+column-limited grants above are the additional,
 role-scoped layer; the triggers are what makes immutability hold for the owner
 posture too. The same trigger family pins `estimate_versions.edition_id`: a binding
 may be established from NULL exactly once (the seed backfill) and never changed.
@@ -221,7 +224,16 @@ entry** (`src/main.ts`) against it and verifies, over real HTTP:
   `69011321.1668`), zero events for denied/failed mutations, an audit history that
   survives the restart byte-identically, and a second restart **as a restricted
   application role** that still writes events while direct `UPDATE`/`DELETE` on
-  `audit_events` answer PostgreSQL `42501` (append-only enforced at the DB layer).
+  `audit_events` answer PostgreSQL `42501` (append-only enforced at the DB layer);
+- the **P8-B S2 lifecycle block**: a data-steward import through the same gate,
+  duplicate-import `409`, four-eyes self-activation `403`, the admin's atomic
+  activation (the seeded 1404 auto-archived, both events committed together, exactly
+  one ACTIVE edition), the default edition search following the ACTIVE edition, the
+  legal 0-active state failing closed `409 EDITION_NOT_ACTIVE`, the golden Excel bytes
+  identical across the whole churn (§14), and the edition content hash untouched by
+  the lifecycle (§11) — plus the S1 tamper probes (edition content/provenance
+  `UPDATE` and `DELETE` denied `42501` for the application role, the lifecycle
+  columns writable).
 
 ## Verification commands
 

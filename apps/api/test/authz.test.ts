@@ -27,6 +27,7 @@ import {
   COMPLETE_LINES,
   GOLDEN_COEFFICIENTS,
   loginCookie,
+  syntheticStagedFile,
   type RoleAwareServer,
 } from './helpers.js';
 
@@ -39,6 +40,7 @@ const ALL_ROLES: readonly UserRole[] = [
 ];
 const ESTIMATOR_PLUS: readonly UserRole[] = ['org_admin', 'estimator'];
 const ORG_ADMIN_ONLY: readonly UserRole[] = ['org_admin'];
+const DATA_STEWARD_PLUS: readonly UserRole[] = ['org_admin', 'data_steward'];
 
 /** The §2.2 grant sets — the mirror of authz.ts for computing the forbidden set. */
 const GRANTS: Record<RoleRequirement, readonly UserRole[]> = {
@@ -47,6 +49,7 @@ const GRANTS: Record<RoleRequirement, readonly UserRole[]> = {
   estimator: [...ESTIMATOR_PLUS],
   reviewer: ['org_admin', 'reviewer'],
   org_admin: [...ORG_ADMIN_ONLY],
+  data_steward: [...DATA_STEWARD_PLUS],
 };
 
 interface RouteCase {
@@ -84,6 +87,13 @@ let FTD = ''; // FINALIZED takeoff document
 let VAP = ''; // S4: FINALIZED estimate version, never approved (approve denied-probe target)
 let TAP = ''; // S4: FINALIZED takeoff document, never approved (approve denied-probe target)
 let U0 = ''; // a viewer user id (user-management denied-probe target)
+// P8-B S2: the second steward account (created in beforeAll) and the shared DRAFT
+// edition id of the lifecycle denied probes.
+const MATRIX_STEWARD_2 = {
+  username: 'matrix-steward-2',
+  password: 'matrix-steward-2-password-123',
+} as const;
+const DENIED_EDITION_ID = 'ir-14mx-abniye-matrix-denied';
 
 const TAKEOFF_LINE = {
   lineId: 'AL1',
@@ -295,6 +305,16 @@ beforeAll(async () => {
     role: 'viewer',
   });
   U0 = idOf(viewer, 'userId');
+
+  // P8-B S2 fixtures — a SECOND data steward (the four-eyes counterpart: every
+  // permitted-role activation probe needs an edition imported by someone else) and
+  // one shared DRAFT edition (the denied-probe target of the lifecycle mutations).
+  await mustSucceed(admin, 'POST', '/users', {
+    username: MATRIX_STEWARD_2.username,
+    password: MATRIX_STEWARD_2.password,
+    role: 'data_steward',
+  });
+  await mustSucceed(admin, 'POST', '/pricebook/editions', syntheticStagedFile('matrix-denied'));
 });
 
 /** GET a url as the admin → serialized status+body (the state snapshots). */
@@ -781,10 +801,90 @@ const CASES: readonly RouteCase[] = [
     allowedStatus: 200,
     deniedUrl: () => `/projects/${P0}/takeoffs/${FTD}/render/pdf`,
   },
+  // #39–#43 — the P8-B S2 pricebook-edition lifecycle (CG-IR-PB@0.2.0 §17): reads
+  // are Viewer+ like every read; the three mutations are data_steward+ (the pipeline
+  // class — org_admin inherits it through the lattice). Activation probes arrange a
+  // FRESH DRAFT imported by the SECOND steward, so both permitted roles are
+  // four-eyes-clean against the importer.
+  {
+    key: 'GET /pricebook/editions',
+    method: 'GET',
+    requirement: 'viewer',
+    allowed: ALL_ROLES,
+    allowedStatus: 200,
+    deniedUrl: () => '/pricebook/editions',
+  },
+  {
+    key: 'GET /pricebook/editions/:editionId',
+    method: 'GET',
+    requirement: 'viewer',
+    allowed: ALL_ROLES,
+    allowedStatus: 200,
+    deniedUrl: () => '/pricebook/editions/ir-1404-abniye',
+    url: () => '/pricebook/editions/ir-1404-abniye',
+  },
+  {
+    key: 'POST /pricebook/editions',
+    method: 'POST',
+    requirement: 'data_steward',
+    allowed: DATA_STEWARD_PLUS,
+    allowedStatus: 201,
+    deniedUrl: () => '/pricebook/editions',
+    deniedPayload: syntheticStagedFile('matrix-denied-import'),
+    state: () => snapshot('/pricebook/editions'),
+    arrange: () => ({
+      url: '/pricebook/editions',
+      payload: syntheticStagedFile(nextId('mx-imp-')),
+    }),
+  },
+  {
+    key: 'POST /pricebook/editions/:editionId/activate',
+    method: 'POST',
+    requirement: 'data_steward',
+    allowed: DATA_STEWARD_PLUS,
+    allowedStatus: 200,
+    deniedUrl: () => `/pricebook/editions/${DENIED_EDITION_ID}/activate`,
+    state: () => snapshot('/pricebook/editions'),
+    arrange: async () => {
+      const steward2 = await loginCookie(
+        server.app,
+        MATRIX_STEWARD_2.username,
+        MATRIX_STEWARD_2.password,
+      );
+      const imported = await mustSucceed(
+        steward2,
+        'POST',
+        '/pricebook/editions',
+        syntheticStagedFile(nextId('mx-act-')),
+      );
+      const editionId = imported.json<{ edition: { editionId: string } }>().edition.editionId;
+      return { url: `/pricebook/editions/${editionId}/activate` };
+    },
+  },
+  {
+    key: 'POST /pricebook/editions/:editionId/archive',
+    method: 'POST',
+    requirement: 'data_steward',
+    allowed: DATA_STEWARD_PLUS,
+    allowedStatus: 200,
+    deniedUrl: () => `/pricebook/editions/${DENIED_EDITION_ID}/archive`,
+    state: () => snapshot('/pricebook/editions'),
+    arrange: async () => {
+      const admin = await adminCookie();
+      const imported = await mustSucceed(
+        admin,
+        'POST',
+        '/pricebook/editions',
+        syntheticStagedFile(nextId('mx-arc-')),
+      );
+      const editionId = imported.json<{ edition: { editionId: string } }>().edition.editionId;
+      return { url: `/pricebook/editions/${editionId}/archive` };
+    },
+  },
 ];
 
 describe('P8-A S2 — the route × role authorization matrix (CG-GOV §3)', () => {
-  it('the case table IS the policy table (36 protected routes, no drift)', () => {
+  it('the case table IS the policy table (41 protected routes, no drift)', () => {
     expect(Object.keys(ROUTE_POLICIES).length).toBe(CASES.length);
     for (const routeCase of CASES) {
       expect(ROUTE_POLICIES[routeCase.key], routeCase.key).toBe(routeCase.requirement);

@@ -22,6 +22,14 @@ import type { ImportReport, StagedPricebookFile } from './staged-import.js';
 /** The three lifecycle states of spec §7 (D-PB-2 = A) — exactly these, no others. */
 export const PRICEBOOK_EDITION_STATUSES = ['DRAFT', 'ACTIVE', 'ARCHIVED'] as const;
 
+/**
+ * The discipline of every V1/V1.1 edition — ابنیه ('abniye'), the only discipline
+ * (the `pricebook_editions_discipline_check` constraint enforces it at the database
+ * level). Editions, activation and the default edition search are per-discipline
+ * (§9); this constant is the single application-side spelling.
+ */
+export const V1_DISCIPLINE = 'abniye';
+
 export type EditionStatus = (typeof PRICEBOOK_EDITION_STATUSES)[number];
 
 export function isEditionStatus(value: unknown): value is EditionStatus {

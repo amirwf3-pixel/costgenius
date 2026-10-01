@@ -41,6 +41,7 @@ import {
   bindRepositories,
   buildAuditAwareServer,
   COMPLETE_LINES,
+  syntheticStagedFile,
   FIXED_INSTANT,
   GOLDEN_COEFFICIENTS,
   TEST_ADMIN,
@@ -1025,9 +1026,102 @@ describe('S3 §4.2/§4.3 — append-only surface and the S4 boundary', () => {
       supersededEditionId: null,
       seeded: true,
     });
-    // the third catalog entry of §16 (.archived) has NO writer yet — S2's routes
+    // the third catalog entry of §16 (.archived) has its S2 writer (the archive and
+    // activate routes); this suite's server performs no lifecycle operation, so none
+    // exist in THIS history — the exact payloads are proven below and in the
+    // pricebook-lifecycle suite
     const archived = await eventsOf('pricebook_edition.archived');
     expect(archived).toEqual([]);
+  });
+
+  it('the P8-B S2 lifecycle routes write their three events with exact payloads (CG-IR-PB@0.2.0 §16)', async () => {
+    const stewardCookie = await server.cookieFor('data_steward');
+    // import (steward) → activate (admin — four-eyes) → the previous ACTIVE is
+    // auto-archived → archive the winner again (0-active) — each with its exact event
+    const imported = await server.app.inject({
+      method: 'POST',
+      url: '/pricebook/editions',
+      headers: { cookie: stewardCookie },
+      payload: syntheticStagedFile('audit-lifecycle'),
+    });
+    expect(imported.statusCode).toBe(201);
+    const editionId = imported.json<{ edition: { editionId: string } }>().edition.editionId;
+    const contentHash = (
+      await server.pg.query<{ content_hash: string }>(
+        'select content_hash from pricebook_editions where edition_id = $1',
+        [editionId],
+      )
+    ).rows[0]?.content_hash;
+    expect((await eventsOf('pricebook_edition.imported', editionId))[0]?.details).toEqual({
+      contentHash,
+      rowCount: 2,
+      warningCount: imported.json<{ importReport: { warningCount: number } }>().importReport
+        .warningCount,
+    });
+
+    const previousActiveId = (
+      await server.pg.query<{ edition_id: string }>(
+        "select edition_id from pricebook_editions where status = 'ACTIVE'",
+      )
+    ).rows[0]?.edition_id;
+    const previousHash = (
+      await server.pg.query<{ content_hash: string }>(
+        'select content_hash from pricebook_editions where edition_id = $1',
+        [previousActiveId],
+      )
+    ).rows[0]?.content_hash;
+
+    const activated = await server.app.inject({
+      method: 'POST',
+      url: `/pricebook/editions/${editionId}/activate`,
+      headers: { cookie: server.cookie },
+    });
+    expect(activated.statusCode).toBe(200);
+    expect((await eventsOf('pricebook_edition.activated', editionId))[0]?.actorUserId).toBe(
+      adminId,
+    );
+    expect((await eventsOf('pricebook_edition.activated', editionId))[0]?.details).toEqual({
+      contentHash,
+      supersededEditionId: previousActiveId,
+    });
+    // the auto-archive of the superseded edition: its OWN event, same transaction
+    expect((await eventsOf('pricebook_edition.archived', previousActiveId)).length).toBe(1);
+    expect((await eventsOf('pricebook_edition.archived', previousActiveId))[0]?.actorUserId).toBe(
+      adminId,
+    );
+    expect((await eventsOf('pricebook_edition.archived', previousActiveId))[0]?.details).toEqual({
+      contentHash: previousHash,
+      previousStatus: 'ACTIVE',
+    });
+
+    const archivedAgain = await server.app.inject({
+      method: 'POST',
+      url: `/pricebook/editions/${editionId}/archive`,
+      headers: { cookie: server.cookie },
+    });
+    expect(archivedAgain.statusCode).toBe(200);
+    expect((await eventsOf('pricebook_edition.archived', editionId))[0]?.details).toEqual({
+      contentHash,
+      previousStatus: 'ACTIVE',
+    });
+
+    // every denied/failed lifecycle path writes ZERO events (the house rule)
+    const eventsBefore = await totalEvents();
+    const selfActivation = await server.app.inject({
+      method: 'POST',
+      url: '/pricebook/editions/no-such-edition/activate',
+      headers: { cookie: server.cookie },
+    });
+    expect(selfActivation.statusCode).toBe(404);
+    const viewerDenied = await server.app.inject({
+      method: 'POST',
+      url: `/pricebook/editions/${editionId}/activate`,
+      headers: { cookie: await server.cookieFor('viewer') },
+    });
+    expect(viewerDenied.statusCode).toBe(403);
+    expect(await totalEvents()).toBe(eventsBefore);
+    // (the suite's server ends in the 0-active state — legal per D-PB-4, and no later
+    // assertion of this file depends on an ACTIVE edition)
   });
 });
 
@@ -1057,12 +1151,13 @@ describe('S3 security — the persisted history is safe and exact', () => {
       'role',
       'from',
       'to',
-      // P8-B S1: the two seeded pricebook-edition events (CG-IR-PB@0.2.0 §16)
+      // P8-B S1/S2: the pricebook-edition events (CG-IR-PB@0.2.0 §16)
       'contentHash',
       'rowCount',
       'warningCount',
       'supersededEditionId',
       'seeded',
+      'previousStatus',
     ]);
     for (const row of rows) {
       for (const key of Object.keys(row.details as Record<string, unknown>)) {

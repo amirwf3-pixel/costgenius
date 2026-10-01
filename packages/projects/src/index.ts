@@ -143,6 +143,7 @@ export {
   estimateVersionCreated,
   estimateVersionFinalized,
   pricebookEditionActivated,
+  pricebookEditionArchived,
   pricebookEditionImported,
   projectCreated,
   takeoffDocumentApproved,

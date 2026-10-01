@@ -28,6 +28,15 @@ export {
 export { readApiConfig, type ApiConfig } from './config.js';
 export { DEFAULT_DATASET_PATH, loadPublishedDataset } from './dataset.js';
 export { seedPricebookEdition, type PricebookSeedDependencies } from './pricebook-seed.js';
+export {
+  activatePricebookEdition,
+  archivePricebookEdition,
+  importPricebookEdition,
+  isUniqueViolation,
+  type ImportedEdition,
+  type PricebookLifecycleDependencies,
+} from './pricebook-lifecycle.js';
+export { ActiveEditionDatasets } from './edition-datasets.js';
 export { mapError, notFound, type ApiErrorBody, type ApiErrorMapping } from './errors.js';
 export {
   AuthError,

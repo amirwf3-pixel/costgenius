@@ -94,6 +94,40 @@ export interface PricebookEditionRepository {
    * rows bound. Runs only after the edition itself exists (the FK never dangles).
    */
   backfillVersionEditionBindings(edition: PricebookEdition): Promise<number>;
+  /**
+   * P8-B S2 (§17 #39): every edition, in the contract's deterministic
+   * `(importedAt, editionId)` order — the administration/audit list. Content row bulk
+   * is never returned to the list route; `content` is carried but the projection is
+   * the caller's choice.
+   */
+  listEditions(): Promise<readonly PricebookEdition[]>;
+  /**
+   * P8-B S2 (§8/§9) — the atomic ACTIVATE write: archives the discipline's currently
+   * ACTIVE edition (the caller's `previousActiveEditionId`, only if it is still
+   * ACTIVE — a concurrent change leaves it untouched) and sets the target ACTIVE with
+   * its activation stamp, clearing any stale archive stamp of an earlier lifecycle.
+   * Both updates run on the CALLER'S executor (pool or open transaction) so the state
+   * change and its audit events commit together. Returns false when the guarded
+   * target update matched zero rows — the target is already ACTIVE (the sequential
+   * 409; the concurrent-different-editions race surfaces instead as the partial
+   * unique index's unique-violation, mapped by the caller to the same code). The
+   * `pricebook_editions_one_active` partial unique index is the final authority:
+   * two concurrent activations of different editions produce exactly one winner.
+   */
+  activateEdition(
+    editionId: string,
+    activatedBy: string,
+    activatedAt: string,
+    previousActiveEditionId: string | null,
+  ): Promise<boolean>;
+  /**
+   * P8-B S2 (§8) — the atomic ARCHIVE write: DRAFT or ACTIVE → ARCHIVED with the
+   * archive stamp, on the CALLER'S executor. Returns false when the guarded update
+   * matched zero rows (already ARCHIVED — the sequential 409). Content, provenance
+   * and import identity are never touched (§11); archiving the only ACTIVE edition
+   * is legal (D-PB-4 = A — the 0-active state).
+   */
+  archiveEdition(editionId: string, archivedBy: string, archivedAt: string): Promise<boolean>;
 }
 
 /** Deterministic in-memory ProjectRepository (reference adapter; no persistence). */

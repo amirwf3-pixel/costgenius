@@ -14,7 +14,7 @@
  * verification.
  */
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   createDb,
   createDbPool,
@@ -95,6 +95,27 @@ it('smoke availability report (never counted as server verification when absent)
 });
 
 describe.skipIf(SMOKE_URL === undefined)('node-postgres → real PostgreSQL server', () => {
+  beforeAll(async () => {
+    // Full clean slate FIRST (the P8-B convention — every other node-postgres suite
+    // does the same): the disposable database is SHARED sequentially by the whole
+    // env-gated suite family, and any predecessor may leave any state (a reset
+    // sibling drops this suite's journal along with its own tables; a suite testing
+    // the 0-active lifecycle leaves zero ACTIVE editions). Without this prologue the
+    // journal-based migrate below re-applies 0004 onto surviving tables → 42P07.
+    // Children before parents, the migration journal AND the 0004 trigger FUNCTIONS
+    // (which survive the table drop and would make the re-applied migration fail
+    // with 42723).
+    const setup = createDbPool(SMOKE_URL as string);
+    await setup.query(
+      'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, pricebook_editions, estimates, sessions, audit_events, users, projects CASCADE',
+    );
+    await setup.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
+    await setup.query(
+      'DROP FUNCTION IF EXISTS pricebook_editions_guard_immutable_columns(), pricebook_editions_forbid_delete(), estimate_versions_guard_edition_binding(), estimate_versions_stamp_active_edition() CASCADE',
+    );
+    await setup.end();
+  });
+
   it('connection → migration → workflow → finalize → persist → NEW connection → reload → verify → render', async () => {
     const url = SMOKE_URL as string;
 

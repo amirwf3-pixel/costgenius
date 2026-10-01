@@ -1817,6 +1817,9 @@ async function main(): Promise<void> {
             section: 'Chapter 1, Group 1',
             sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
           },
+          // the official staged row shape (P8-B S3): line binding copies these verbatim
+          externalDependencies: [],
+          notes: [],
         },
       ],
     });
@@ -1951,6 +1954,138 @@ async function main(): Promise<void> {
       'S2: the default search serves the restored ACTIVE 1404 edition again',
       rowsRestored.status === 200 &&
         (rowsRestored.data as { edition?: string }).edition === 'ir-1404-abniye',
+    );
+
+    // ---- P8-B S3 — edition binding on the production path (CG-IR-PB@0.2.0 §12/§17) ----
+    //
+    // The restored 1404 edition is ACTIVE; the smoke edition is ARCHIVED. The D-PB-3
+    // binding matrix through the REAL routes: an omitted editionId binds the ACTIVE
+    // edition (response, persisted row and audit event all record it); an explicit
+    // ARCHIVED edition binds exactly it — and its lines resolve against ITS rows (the
+    // per-version proof: the synthetic 010101 description, never the official one); a
+    // DRAFT is never selectable; the 0-active default fails closed while an explicit
+    // ARCHIVED selection still binds; the rows dialog parameter searches exactly the
+    // named edition.
+    const s3DefaultVersion = await call('POST', `/estimates/${first.estimateId}/versions`, {
+      buildingId: 'building-main',
+      versionId: crypto.randomUUID(),
+    });
+    const s3DefaultVersionId = (s3DefaultVersion.data as { versionId: string }).versionId;
+    check(
+      'S3: version creation with an omitted editionId binds the ACTIVE edition',
+      s3DefaultVersion.status === 201 &&
+        (s3DefaultVersion.data as { editionId?: string }).editionId === 'ir-1404-abniye',
+    );
+    const s3BindingRow = await pool.query<{ edition_id: string | null }>(
+      'SELECT edition_id FROM estimate_versions WHERE version_id = $1',
+      [s3DefaultVersionId],
+    );
+    check(
+      'S3: the default-bound version ROW carries ir-1404-abniye (edition_id persisted)',
+      s3BindingRow.rows[0]?.edition_id === 'ir-1404-abniye',
+    );
+    const s3CreatedEvent = await pool.query<{ details: unknown }>(
+      "SELECT details FROM audit_events WHERE action = 'estimate_version.created' AND resource_id = $1",
+      [s3DefaultVersionId],
+    );
+    check(
+      'S3: estimate_version.created audits the bound editionId (details {versionNumber, editionId})',
+      (s3CreatedEvent.rows[0]?.details as { editionId?: string } | undefined)?.editionId ===
+        'ir-1404-abniye',
+    );
+
+    const s3ArchivedVersion = await call('POST', `/estimates/${first.estimateId}/versions`, {
+      buildingId: 'building-main',
+      versionId: crypto.randomUUID(),
+      editionId: 'ir-14sm-abniye-main',
+    });
+    const s3ArchivedVersionId = (s3ArchivedVersion.data as { versionId: string }).versionId;
+    check(
+      'S3: an explicit ARCHIVED editionId binds exactly it (the contract-edition driver)',
+      s3ArchivedVersion.status === 201 &&
+        (s3ArchivedVersion.data as { editionId?: string }).editionId === 'ir-14sm-abniye-main',
+    );
+    const s3Line = await call('POST', `/estimate-versions/${s3ArchivedVersionId}/lines`, {
+      lines: [{ lineId: 's3l1', pricebookCode: '010101', quantity: '2', unit: 'm2' }],
+    });
+    check(
+      'S3: the ARCHIVED-bound version resolves its lines against ITS edition (never the ACTIVE one)',
+      s3Line.status === 200 &&
+        (s3Line.data as { lines?: { description?: string }[] }).lines?.[0]?.description ===
+          'شرح آزمون دود main',
+      JSON.stringify(s3Line.data).slice(0, 400),
+    );
+
+    const s3DraftImport = await stewardCall(
+      'POST',
+      '/pricebook/editions',
+      smokeStagedFile('s3draft'),
+    );
+    check(
+      'S3: the steward imports a fresh DRAFT for the selection-denial proof (201 DRAFT)',
+      s3DraftImport.status === 201 &&
+        (s3DraftImport.data as { edition?: { status?: string } }).edition?.status === 'DRAFT',
+    );
+    const s3DraftDenied = await call('POST', `/estimates/${first.estimateId}/versions`, {
+      buildingId: 'building-main',
+      versionId: crypto.randomUUID(),
+      editionId: 'ir-14sm-abniye-s3draft',
+    });
+    check(
+      'S3: a DRAFT edition is never selectable (409 EDITION_NOT_SELECTABLE, zero mutation)',
+      s3DraftDenied.status === 409 &&
+        (s3DraftDenied.data as { error?: { code?: string } }).error?.code ===
+          'EDITION_NOT_SELECTABLE',
+    );
+
+    const s3Rows = await call(
+      'GET',
+      `/pricebook/rows?search=${encodeURIComponent('شرح آزمون دود main')}&editionId=ir-14sm-abniye-main`,
+    );
+    check(
+      'S3: rows?editionId= searches exactly the named edition (the add-line dialog contract)',
+      s3Rows.status === 200 &&
+        (s3Rows.data as { edition?: string }).edition === 'ir-14sm-abniye-main',
+    );
+    const s3RowsDraft = await call(
+      'GET',
+      '/pricebook/rows?search=0101&editionId=ir-14sm-abniye-s3draft',
+    );
+    check(
+      'S3: rows?editionId= of a DRAFT is refused (409 EDITION_NOT_SELECTABLE)',
+      s3RowsDraft.status === 409 &&
+        (s3RowsDraft.data as { error?: { code?: string } }).error?.code ===
+          'EDITION_NOT_SELECTABLE',
+    );
+
+    const s3ArchiveSeeded = await postAs(authCookie, '/pricebook/editions/ir-1404-abniye/archive');
+    check(
+      'S3: archiving the ACTIVE edition again → the legal 0-active state (D-PB-4 = A)',
+      s3ArchiveSeeded.status === 200,
+    );
+    const s3ZeroActive = await call('POST', `/estimates/${first.estimateId}/versions`, {
+      buildingId: 'building-main',
+      versionId: crypto.randomUUID(),
+    });
+    check(
+      'S3: zero ACTIVE + omitted editionId → 409 EDITION_NOT_ACTIVE (fail closed)',
+      s3ZeroActive.status === 409 &&
+        (s3ZeroActive.data as { error?: { code?: string } }).error?.code === 'EDITION_NOT_ACTIVE',
+    );
+    const s3ZeroActiveExplicit = await call('POST', `/estimates/${first.estimateId}/versions`, {
+      buildingId: 'building-main',
+      versionId: crypto.randomUUID(),
+      editionId: 'ir-14sm-abniye-main',
+    });
+    check(
+      'S3: an explicit ARCHIVED edition STILL binds at zero ACTIVE',
+      s3ZeroActiveExplicit.status === 201 &&
+        (s3ZeroActiveExplicit.data as { editionId?: string }).editionId === 'ir-14sm-abniye-main',
+    );
+    const s3Restore = await postAs(authCookie, '/pricebook/editions/ir-1404-abniye/activate');
+    check(
+      'S3: the next activation restores the ACTIVE default (1404 ACTIVE again)',
+      s3Restore.status === 200 && (s3Restore.data as { status?: string }).status === 'ACTIVE',
     );
 
     // the steward's session must not disturb the exact session-count check below

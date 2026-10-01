@@ -55,6 +55,14 @@ export interface StartVersionInput {
   readonly createdAt: string;
   /** The single-building scope of the version; required for S4 calculability. */
   readonly buildingId: string;
+  /**
+   * P8-B S3 (D-PB-3 = B): the exact identity of the edition the version binds to —
+   * ALWAYS the edition whose dataset is passed as `dataset` (the API resolves the
+   * default ACTIVE edition or validates an explicit selection BEFORE calling this).
+   * Persisted as the version's immutable `edition_id` binding; the year label still
+   * derives from the dataset's rows (`datasetEditionOf`), exactly as before.
+   */
+  readonly editionId?: string;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly versionId?: string;
 }
@@ -101,6 +109,7 @@ export function startEstimateVersion(
     createdAt: input.createdAt,
     edition: datasetEditionOf(dataset),
     buildingId: input.buildingId,
+    ...(input.editionId !== undefined ? { editionId: input.editionId } : {}),
     ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
     ...(input.versionId !== undefined ? { versionId: input.versionId } : {}),
   });

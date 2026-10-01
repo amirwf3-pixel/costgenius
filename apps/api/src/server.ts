@@ -5,10 +5,12 @@
  * and no rendering logic here: S2/S3/S4, the BOQ lifecycle and the renderers stay in
  * their owning layers, and this module only composes them.
  *
- * Dependency injection: repositories, dataset and clock are injected via
+ * Dependency injection: repositories and clock are injected via
  * `createApiServer(deps)` — no global singleton, no hidden state. The production
  * composition root (composition.ts/index.ts) builds the real PostgreSQL stack; tests
- * inject PGlite-backed repositories and a fixed clock for determinism.
+ * inject PGlite-backed repositories and a fixed clock for determinism. Since P8-B S3
+ * there is no injected dataset: every edition/dataset resolution reads the persisted
+ * edition registry (D-PB-1 = B) through `ActiveEditionDatasets`.
  *
  * Lifecycle exposed (exactly the `projects` surface, nothing invented):
  * createProject → createEstimateForProject → startEstimateVersion → addEstimateLines →
@@ -20,6 +22,7 @@ import { appendAuditEvent, type Transact } from './audit.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type {
   EstimateRepository,
+  EstimateVersion,
   FinalizedEstimate,
   FinalizedEstimateRepository,
   FinalizedTakeoff,
@@ -185,8 +188,15 @@ export interface ApiDependencies {
     /** S3: the append-only audit writer (pool-bound — standalone events like `auth.login_failed`). */
     readonly audit: AuditEventRepository;
   };
-  readonly dataset: PublishedDataset;
-  /** Injected clock (ISO instant) — the server never reads the clock itself. */
+  /**
+   * Injected clock (ISO instant) — the server never reads the clock itself.
+   *
+   * P8-B S3: there is deliberately NO dataset dependency any more — every runtime
+   * dataset resolution (version creation, line-add, takeoff transfer, the rows
+   * search) goes through the persisted edition registry (`ActiveEditionDatasets`
+   * over `repositories.editions`); the boot-time staged file is the SEED artifact
+   * only (D-PB-1 = B: the database is the single source of truth for editions).
+   */
   readonly clock: () => string;
   /**
    * S3 (CG-GOV §4.2): the transactional unit of work — every audited mutation runs
@@ -574,13 +584,43 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
   // an empty 200. Deterministic: published order, capped results.
   const editionDatasets = new ActiveEditionDatasets(deps.repositories.editions);
 
+  /**
+   * P8-B S3 (§12): the published dataset of a version's IMMUTABLE edition binding —
+   * the one and only dataset line-add and takeoff transfer may resolve against.
+   * Never the currently ACTIVE edition, never the boot-time file, never a guess: a
+   * version without a binding (or bound to an edition that no longer exists — editions
+   * are never deleted, §8) is corrupt state and fails closed as an internal error.
+   */
+  const versionDataset = async (version: EstimateVersion): Promise<PublishedDataset> => {
+    if (version.editionId === undefined) {
+      throw new Error(
+        `version "${version.versionId}" carries no pricebook edition binding; refusing to resolve its lines against any other edition (P8-B 0.2.0 section 12)`,
+      );
+    }
+    const dataset = await editionDatasets.datasetFor(version.editionId);
+    if (dataset === undefined) {
+      throw new Error(
+        `version "${version.versionId}" is bound to edition "${version.editionId}" which does not exist; editions are never deleted (P8-B 0.2.0 section 8) — this is corrupt state`,
+      );
+    }
+    return dataset;
+  };
+
   app.get('/pricebook/rows', async (request, reply) => {
     const query = pricebookLookupQuerySchema.parse(request.query);
-    const dataset = await editionDatasets.activeDataset();
+    // P8-B S3 (§12/§17): an explicit `editionId` searches exactly that edition (the
+    // add-line dialog searches the workspace version's edition, so suggestions match
+    // what binding accepts — ACTIVE or ARCHIVED only, a DRAFT is never searchable);
+    // the default remains the discipline's ACTIVE edition, fail-closed in the
+    // 0-active state. The response's `edition` field identifies the searched edition.
+    const dataset =
+      query.editionId === undefined
+        ? await editionDatasets.activeDataset()
+        : await editionDatasets.searchableDataset(query.editionId);
     if (dataset === null) {
       throw new PricebookEditionError(
         'EDITION_NOT_ACTIVE',
-        'no ACTIVE pricebook edition exists for the discipline (the 0-active state is legal); activate an edition to restore the default search',
+        'no ACTIVE pricebook edition exists for the discipline (the 0-active state is legal); activate an edition or search an explicit editionId',
       );
     }
     const needle = query.search;
@@ -746,9 +786,18 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     const estimate = await deps.repositories.estimates.findById(estimateId);
     if (estimate === undefined)
       return await reply.code(404).send(notFound('estimate', estimateId).body);
-    const updated = startEstimateVersion(deps.dataset, estimate, {
+    // P8-B S3 (D-PB-3 = B, §12): resolve the edition binding BEFORE any mutation —
+    // omitted → the discipline's ACTIVE edition (409 EDITION_NOT_ACTIVE in the
+    // 0-active state); explicit → an existing ACTIVE or ARCHIVED edition (404 when
+    // unknown, 409 EDITION_NOT_SELECTABLE for a DRAFT). Every denial happens with
+    // zero mutation and zero events. The version's year label derives from the SAME
+    // edition's published dataset (its rows), so label and resolution can never
+    // diverge, and the resolved editionId is persisted as the immutable binding.
+    const selection = await editionDatasets.forNewVersion(body.editionId);
+    const updated = startEstimateVersion(selection.dataset, estimate, {
       createdAt: body.createdAt ?? deps.clock(),
       buildingId: body.buildingId,
+      editionId: selection.edition.editionId,
       ...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
       ...(body.versionId !== undefined ? { versionId: body.versionId } : {}),
     });
@@ -835,7 +884,17 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     const estimate = await deps.repositories.estimates.findByVersionId(versionId);
     if (estimate === undefined)
       return await reply.code(404).send(notFound('version', versionId).body);
-    // D-015: dimensional lines carry factors, never a computed quantity — the server
+    // P8-B S3 (§12 — the draft-binding invariant): lines resolve against the TARGET
+    // VERSION's bound edition, never against "whatever is active now" and never the
+    // boot-time file — a draft created under one edition keeps accepting that
+    // edition's lines after another edition becomes ACTIVE. The binding is immutable,
+    // so this resolution is stable for the version's life.
+    const boundVersion = estimate.versions.find((v) => v.versionId === versionId);
+    if (boundVersion === undefined) {
+      // Unreachable: findByVersionId resolved this aggregate through the version row.
+      throw new Error(`version "${versionId}" is missing from its own aggregate`);
+    }
+    const versionedDataset = await versionDataset(boundVersion);
     // computes the quantity via calc-engine and attaches the provenance itself. The
     // client-supplied quantity (when present) is the only value used verbatim.
     const dimensional = body.lines.filter((line) => line.takeoff !== undefined);
@@ -872,7 +931,7 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
       for (const item of result.items) computed.set(item.lineId, item);
     }
     const result = addEstimateLines(
-      deps.dataset,
+      versionedDataset,
       estimate,
       versionId,
       // optional fields are only carried when present (exactOptionalPropertyTypes)
@@ -1399,7 +1458,22 @@ export function createApiServer(deps: ApiDependencies): FastifyInstance {
     if (estimate === undefined || estimate.projectId !== params.projectId) {
       return await reply.code(404).send(notFound('version', body.versionId).body);
     }
-    const transfer = transferTakeoffToVersion(deps.dataset, finalized, estimate, body.versionId);
+    // P8-B S3 (§13): transfer prices against the TARGET VERSION's bound edition —
+    // the edition persisted at version creation (D-PB-3 = B), never the currently
+    // ACTIVE edition (doing so would price an edition-bound draft with another
+    // edition's rows and deterministically fail EDITION_MISMATCH). The request shape
+    // is unchanged: the binding IS the transfer's edition parameter.
+    const transferTarget = estimate.versions.find((v) => v.versionId === body.versionId);
+    if (transferTarget === undefined) {
+      // Unreachable: findByVersionId resolved this aggregate through the version row.
+      throw new Error(`version "${body.versionId}" is missing from its own aggregate`);
+    }
+    const transfer = transferTakeoffToVersion(
+      await versionDataset(transferTarget),
+      finalized,
+      estimate,
+      body.versionId,
+    );
     if (!transfer.ok) {
       // The stable transfer rejection (CG-FT §12): 422 TAKEOFF_TRANSFER_REJECTED with
       // the per-item failures (existing S2 codes or ALREADY_TRANSFERRED) in details.

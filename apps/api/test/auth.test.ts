@@ -33,7 +33,6 @@ function sessionBody(response: { json: () => unknown }): LoginResponse {
   return response.json() as LoginResponse;
 }
 import type { ApiDependencies } from '../src/index.js';
-import { loadPublishedDataset } from '../src/dataset.js';
 
 /** The shared raw-request server of the auth suite (NO cookie wrapper). */
 async function buildRawServer(): Promise<{
@@ -63,7 +62,6 @@ async function buildRawServer(): Promise<{
       editions: poolBound.editions,
     },
     governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
-    dataset: loadPublishedDataset(),
     clock: () => FIXED_INSTANT,
     transact: transactOver(db),
   };
@@ -421,7 +419,6 @@ describe('P8-A S1 bootstrap (CG-GOV §1.5)', () => {
         editions: poolBound.editions,
       },
       governance: { users, sessions, audit: poolBound.audit },
-      dataset: loadPublishedDataset(),
       clock: () => FIXED_INSTANT,
       transact: transactOver(db),
     };

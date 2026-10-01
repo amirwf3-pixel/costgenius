@@ -31,6 +31,14 @@ export interface EstimateVersion {
   readonly createdAt: string;
   /** Edition identity every line of this version must share (e.g. "1404"); editions are never mixed. */
   readonly edition: string;
+  /**
+   * P8-B S3 (D-PB-3 = B): the exact identity of the bound pricebook edition
+   * (`pricebook_editions.edition_id`, e.g. "ir-1404-abniye") — immutable for the
+   * version's life. The legacy `edition` field above keeps its year-label semantics
+   * and bytes; this field carries exact identity so a same-year erratum can never be
+   * conflated with the original.
+   */
+  readonly editionId?: string;
   readonly buildingId?: string;
   readonly metadata: Readonly<Record<string, string>>;
   readonly lines: readonly BoqLine[];
@@ -45,6 +53,8 @@ export interface CreateEstimateInput {
 export interface CreateVersionInput {
   readonly createdAt: string;
   readonly edition: string;
+  /** P8-B S3: the exact edition identity binding (optional — pre-P8-B callers omit it). */
+  readonly editionId?: string;
   readonly buildingId?: string;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly lines?: readonly BoqLine[];
@@ -120,6 +130,7 @@ export function createEstimateVersion(estimate: Estimate, input: CreateVersionIn
     edition: input.edition,
     metadata: { ...input.metadata },
     lines: [...(input.lines ?? [])],
+    ...(input.editionId !== undefined ? { editionId: input.editionId } : {}),
     ...(input.buildingId !== undefined ? { buildingId: input.buildingId } : {}),
   });
   checkLines(draft, input.edition);

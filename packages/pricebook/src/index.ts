@@ -61,8 +61,10 @@ export {
   type PricebookEdition,
 } from './edition.js';
 export {
+  EDITION_NOT_ELIGIBLE_CODE,
   ensureActivatable,
   ensureArchivable,
+  ensureSelectable,
   PricebookEditionError,
   type PricebookEditionErrorCode,
 } from './edition-lifecycle.js';

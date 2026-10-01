@@ -169,7 +169,13 @@ export function estimateCreated(actor: Actor, estimate: Estimate): AuditEventSpe
   );
 }
 
-/** `estimate_version.created` — details: `{versionNumber}`. */
+/**
+ * `estimate_version.created` — details: `{versionNumber, editionId?}`. P8-B S3
+ * (§12/§16): every version creation records the audited identity of the edition the
+ * version bound to (the resolved ACTIVE default or the explicit selection). The field
+ * is carried only when the version carries a binding, so pre-P8-B fixtures and pure
+ * domain tests keep their exact `{versionNumber}` shape.
+ */
 export function estimateVersionCreated(
   actor: Actor,
   estimate: Estimate,
@@ -181,7 +187,10 @@ export function estimateVersionCreated(
     'estimate_version',
     version.versionId,
     estimate.projectId,
-    { versionNumber: version.versionNumber },
+    {
+      versionNumber: version.versionNumber,
+      ...(version.editionId !== undefined ? { editionId: version.editionId } : {}),
+    },
   );
 }
 

@@ -80,6 +80,11 @@ export function versionToRow(version: EstimateVersion): VersionInsert {
     status: version.status,
     createdAt: version.createdAt,
     edition: version.edition,
+    // P8-B S3 (D-PB-3 = B): the explicit edition binding. Omitted when the version
+    // carries none — the insert then arrives NULL and the migration's insert-time
+    // trigger stamps the ACTIVE edition (the S1 net; the API always passes the
+    // resolved/explicit editionId explicitly, never relying on the stamp).
+    ...(version.editionId !== undefined ? { editionId: version.editionId } : {}),
     ...(version.buildingId !== undefined ? { buildingId: version.buildingId } : {}),
     metadata: { ...version.metadata },
   };
@@ -153,6 +158,7 @@ export function versionFromRows(row: VersionRow, lines: readonly BoqLine[]): Est
     status: row.status as EstimateVersion['status'],
     createdAt: validateInstant(row.createdAt, 'version.createdAt'),
     edition: row.edition,
+    ...(row.editionId !== null ? { editionId: row.editionId } : {}),
     ...(row.buildingId !== null ? { buildingId: row.buildingId } : {}),
     metadata: { ...row.metadata },
     lines: [...lines],

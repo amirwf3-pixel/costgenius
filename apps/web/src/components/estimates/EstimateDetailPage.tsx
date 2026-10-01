@@ -2,11 +2,12 @@
  * صفحه برآورد (§18): مشخصات برآورد + فهرست نسخه‌ها با وضعیت دقیق هر نسخه +
  * ایجاد نسخه جدید (تنها مسیر پیشروی بعد از نهایی‌شدن، §69).
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApi } from '../../api/context.js';
 import { formatInstant, statusLabel } from '../../format.js';
 import { useResource } from '../../hooks.js';
+import type { PricebookEditionSummary } from '../../api/types.js';
 import {
   Badge,
   Button,
@@ -16,6 +17,7 @@ import {
   LoadingView,
   Ltr,
   Modal,
+  Select,
   TextInput,
   FormValidationError,
 } from '../ui/primitives.js';
@@ -66,7 +68,15 @@ export function EstimateDetailPage(): ReactElement {
         </div>
         <div className="info-row">
           <dt>فهرست‌بها</dt>
-          <dd>۱۴۰۴</dd>
+          <dd>
+            {data.versions.length === 0
+              ? '—'
+              : data.versions.some(
+                    (v) => v.editionId !== undefined && v.editionId !== data.versions[0]?.editionId,
+                  )
+                ? 'بر اساس نسخه (نسخه‌ها می‌توانند فهرست‌بهای متفاوت داشته باشند)'
+                : (data.versions[0]?.edition ?? '—')}
+          </dd>
         </div>
         <div className="info-row">
           <dt>تعداد نسخه‌ها</dt>
@@ -83,7 +93,14 @@ export function EstimateDetailPage(): ReactElement {
                 نسخه {version.versionNumber}
               </Link>
               <p className="card-sub">
-                <Ltr>{version.edition}</Ltr> · {formatInstant(version.createdAt)}
+                <Ltr>{version.edition}</Ltr>
+                {version.editionId !== undefined && (
+                  <>
+                    {' '}
+                    (<Ltr>{version.editionId}</Ltr>)
+                  </>
+                )}{' '}
+                · {formatInstant(version.createdAt)}
                 {version.buildingId !== undefined && <> · ساختمان: {version.buildingId}</>}
               </p>
             </div>
@@ -130,6 +147,34 @@ function CreateVersionDialog({
   const [buildingId, setBuildingId] = useState(defaultBuildingId ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | undefined>(undefined);
+  // P8-B S3 (D-PB-3 = B, §19): the optional edition selector — default: the ACTIVE
+  // edition; selectable: ACTIVE + ARCHIVED; DRAFT is never offered. The binding is
+  // immutable once the version is created.
+  const [editions, setEditions] = useState<readonly PricebookEditionSummary[] | undefined>(
+    undefined,
+  );
+  const [editionId, setEditionId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listEditions()
+      .then((all) => {
+        if (cancelled) return;
+        const selectable = all.filter((edition) => edition.status !== 'DRAFT');
+        setEditions(selectable);
+        const active = selectable.find((edition) => edition.status === 'ACTIVE');
+        setEditionId(active?.editionId ?? selectable[0]?.editionId);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause : new Error(String(cause)));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   const submit = async (): Promise<void> => {
     if (buildingId.trim().length === 0) {
@@ -139,7 +184,10 @@ function CreateVersionDialog({
     setBusy(true);
     setError(undefined);
     try {
-      const version = await api.createVersion(estimateId, { buildingId: buildingId.trim() });
+      const version = await api.createVersion(estimateId, {
+        buildingId: buildingId.trim(),
+        ...(editionId !== undefined ? { editionId } : {}),
+      });
       onCreated(version.versionId);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error(String(cause)));
@@ -166,6 +214,30 @@ function CreateVersionDialog({
             placeholder="building-main"
             autoFocus
           />
+        </Field>
+        <Field
+          label="فهرست‌بها *"
+          hint="نسخه به فهرست‌بهای انتخاب‌شده گره می‌خورد و پس از ایجاد تغییرپذیر نیست؛ پیش‌فرض فهرست‌بهای جاری (فعال) است."
+        >
+          {editions === undefined ? (
+            <Select disabled>
+              <option>در حال دریافت فهرست‌بها…</option>
+            </Select>
+          ) : (
+            <Select
+              value={editionId ?? ''}
+              onChange={(event) => setEditionId(event.target.value)}
+              disabled={editions.length === 0}
+            >
+              {editions.length === 0 && <option value="">فهرست‌بهای فعالی موجود نیست</option>}
+              {editions.map((edition) => (
+                <option key={edition.editionId} value={edition.editionId}>
+                  {edition.title} ({edition.year})
+                  {edition.status === 'ACTIVE' ? ' — جاری' : ' — بایگانی‌شده'}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
         <FormError error={error} />
         <div className="form-actions">

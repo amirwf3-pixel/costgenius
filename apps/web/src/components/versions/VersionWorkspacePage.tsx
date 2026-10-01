@@ -146,7 +146,13 @@ export function VersionWorkspacePage(): ReactElement {
         <div className="info-row">
           <dt>فهرست‌بها</dt>
           <dd>
-            فهرست‌بها ۱۴۰۴ (<Ltr>{activeVersion.edition}</Ltr>)
+            فهرست‌بها {activeVersion.edition}
+            {activeVersion.editionId !== undefined && (
+              <>
+                {' '}
+                (<Ltr>{activeVersion.editionId}</Ltr>)
+              </>
+            )}
           </dd>
         </div>
         <div className="info-row">
@@ -249,6 +255,9 @@ export function VersionWorkspacePage(): ReactElement {
       {adding && versionId !== undefined && (
         <AddLineDialog
           versionId={versionId}
+          // P8-B S3 (§12/§19): the dialog searches the WORKSPACE VERSION's edition,
+          // never a global search — suggestions must match what binding accepts.
+          editionId={activeVersion.editionId}
           onClose={() => setAdding(false)}
           onAdded={() => {
             setAdding(false);

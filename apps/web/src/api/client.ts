@@ -21,6 +21,7 @@ import type {
   NewTakeoffInput,
   PasswordChanged,
   NewVersionInput,
+  PricebookEditionSummary,
   PricebookRowRef,
   Project,
   SaveTakeoffContent,
@@ -225,7 +226,13 @@ export interface ApiClient {
     versionId: string,
     coefficients: CoefficientInputs,
   ) => Promise<FinalizedBundle>;
-  readonly searchPricebook: (search: string, limit?: number) => Promise<readonly PricebookRowRef[]>;
+  readonly searchPricebook: (
+    search: string,
+    limit?: number,
+    editionId?: string,
+  ) => Promise<readonly PricebookRowRef[]>;
+  /** P8-B S3: the #39 edition list (viewer-readable) — the version selector's data. */
+  readonly listEditions: () => Promise<readonly PricebookEditionSummary[]>;
   /** D-015/D5-A: stateless dimensional quantity preview (calc-engine, exact-only). */
   readonly previewTakeoffQuantities: (
     items: readonly TakeoffPreviewItemInput[],
@@ -394,7 +401,12 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
     async createVersion(estimateId, input: NewVersionInput) {
       return await request<EstimateVersion>(`/estimates/${estimateId}/versions`, {
         method: 'POST',
-        body: { buildingId: input.buildingId },
+        body: {
+          buildingId: input.buildingId,
+          // P8-B S3: the optional edition binding — undefined means the server's
+          // ACTIVE-edition default (D-PB-3 = B).
+          ...(input.editionId !== undefined ? { editionId: input.editionId } : {}),
+        },
       });
     },
     async getVersion(versionId) {
@@ -451,11 +463,22 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         body: coefficients,
       });
     },
-    async searchPricebook(search, limit = 20) {
+    async searchPricebook(search, limit = 20, editionId) {
+      // P8-B S3 (§12/§17): an explicit editionId searches the WORKSPACE VERSION's
+      // edition (never a global search) so suggestions match what binding accepts;
+      // omitted → the server's ACTIVE-edition default.
+      const editionQuery =
+        editionId === undefined ? '' : `&editionId=${encodeURIComponent(editionId)}`;
       const body = await request<{ rows: readonly PricebookRowRef[] }>(
-        `/pricebook/rows?search=${encodeURIComponent(search)}&limit=${String(limit)}`,
+        `/pricebook/rows?search=${encodeURIComponent(search)}&limit=${String(limit)}${editionQuery}`,
       );
       return body.rows;
+    },
+    async listEditions() {
+      const body = await request<{ editions: readonly PricebookEditionSummary[] }>(
+        '/pricebook/editions',
+      );
+      return body.editions;
     },
     async createTakeoff(projectId, input) {
       return await request<TakeoffDocument>(`/projects/${projectId}/takeoffs`, {

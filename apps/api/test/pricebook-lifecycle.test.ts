@@ -39,7 +39,6 @@ import {
   seedPricebookEdition,
   type ApiDependencies,
 } from '../src/index.js';
-import { loadPublishedDataset } from '../src/dataset.js';
 import type { Transact } from '../src/audit.js';
 
 /** The immutable-column projection of an edition row — byte-compared across the lifecycle. */
@@ -555,7 +554,6 @@ describe('P8-B S2 — activation (POST /pricebook/editions/:editionId/activate)'
         editions: poolBound.editions,
       },
       governance: { users: poolBound.users, sessions: poolBound.sessions, audit: poolBound.audit },
-      dataset: loadPublishedDataset(),
       clock: () => FIXED_INSTANT,
       transact: (async (work: Parameters<Transact>[0]) =>
         db.transaction(async (tx) => {

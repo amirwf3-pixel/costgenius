@@ -31,7 +31,6 @@ import {
 import {
   createApiServer,
   ensureBootstrapAdmin,
-  loadPublishedDataset,
   seedPricebookEdition,
   transactOver,
 } from '@costgenius/api';
@@ -85,7 +84,6 @@ const app = createApiServer({
     sessions: sessionStore,
     audit: new DrizzleAuditEventRepository(db),
   },
-  dataset: loadPublishedDataset(),
   // dev process: real wall clock (the production API injects its clock; see §clock)
   clock: () => new Date().toISOString(),
   // S3: the audited mutations run on ONE transaction (the canonical factory).

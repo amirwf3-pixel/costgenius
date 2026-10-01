@@ -340,6 +340,9 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     previewTakeoffQuantities: vi.fn(() => Promise.reject(new Error('not used here'))),
     calculate: vi.fn(() => Promise.reject(new Error('not used here'))),
     finalize: vi.fn(() => Promise.reject(new Error('not used here'))),
+    // P8-B S3: the edition list — the version-creation selector's data (DRAFT filtered
+    // client-side; the fake returns no editions → the selector stays empty).
+    listEditions: vi.fn(() => Promise.resolve([])),
     searchPricebook: vi.fn(() =>
       Promise.resolve([
         {

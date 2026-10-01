@@ -540,9 +540,25 @@ EDITION_ALREADY_EXISTS`), the deterministic list, the detail with the stored imp
 > ACTIVE edition, both events in ONE transaction, the partial unique index deciding
 > races — exactly one winner), archive (DRAFT discard and ACTIVE archive, the legal
 > 0-active state) — and `GET /pricebook/rows` resolving the persisted ACTIVE edition,
-> fail-closed `409 EDITION_NOT_ACTIVE` when none is active.** D-PB-1 through D-PB-5
-> are final (D-PB-3 = B, owner order). Edition selection on version creation, the
-> rows `editionId` parameter and the UI (S3) are NOT implemented.
+> fail-closed `409 EDITION_NOT_ACTIVE` when none is active. S3 (edition binding,
+> D-PB-3 = B) IMPLEMENTED 2026-10-01: `POST /estimates/:id/versions` accepts the
+> optional `editionId` — omitted → the ACTIVE edition resolved BEFORE any mutation
+> (0 active → `409 EDITION_NOT_ACTIVE`, zero mutation/zero events), explicit
+> ACTIVE/ARCHIVED bound verbatim (explicit ARCHIVED is the contract-edition driver
+> and works at zero ACTIVE), DRAFT → `409 EDITION_NOT_SELECTABLE`, unknown → `404
+EDITION_NOT_FOUND`; the binding is immutable for the version's life (DB trigger +
+> store comparisons); line-add and takeoff transfer resolve the TARGET VERSION's
+> bound edition (never the currently ACTIVE one, never a fallback — an unbound
+> version fails closed); `GET /pricebook/rows` gains the `editionId` parameter
+> (ACTIVE/ARCHIVED searched, DRAFT refused, unknown 404); `estimate_version.created`
+> details grow the additive `editionId` (catalog unchanged at 23 events); responses
+> expose `editionId` additively; the UI adds the version-creation selector (ACTIVE
+> default + ARCHIVED, never DRAFT), the bound-edition display and the edition-scoped
+> add-line dialog. The boot-time in-memory dataset is GONE — all resolution goes
+> through the persisted registry (D-PB-1 = B). Migrations 0000–0004 byte-identical;
+> the golden total `69011321.1668` and every prior suite unchanged.** D-PB-1 through
+> D-PB-5 are final (D-PB-3 = B, owner order). Further P8-B stages (S4) are NOT
+> STARTED and require their own owner execution order.
 
 ## Open decisions
 

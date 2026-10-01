@@ -44,10 +44,13 @@ function requiredDimensionsOf(unit: string): { length: boolean; width: boolean; 
 
 export function AddLineDialog({
   versionId,
+  editionId,
   onClose,
   onAdded,
 }: {
   versionId: string;
+  /** P8-B S3 (§12/§19): the workspace version's bound edition — the search's edition. */
+  editionId: string | undefined;
   onClose: () => void;
   onAdded: () => void;
 }): ReactElement {
@@ -94,7 +97,7 @@ export function AddLineDialog({
     setSearching(true);
     debounce.current = window.setTimeout(() => {
       api
-        .searchPricebook(search.trim(), 20)
+        .searchPricebook(search.trim(), 20, editionId)
         .then((rows) => {
           setResults(rows);
           setSearchError(undefined);
@@ -110,7 +113,7 @@ export function AddLineDialog({
     return () => {
       if (debounce.current !== undefined) window.clearTimeout(debounce.current);
     };
-  }, [api, search]);
+  }, [api, search, editionId]);
 
   /** Collects the current factors (only the dimensions the unit requires). */
   const factorsOf = ():

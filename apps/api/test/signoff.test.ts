@@ -40,7 +40,7 @@ import {
 import {
   createApiServer,
   ensureBootstrapAdmin,
-  loadPublishedDataset,
+  seedPricebookEdition,
   type ApiDependencies,
 } from '../src/index.js';
 import type { AuditEvent, AuditEventRepository } from '@costgenius/projects';
@@ -495,7 +495,6 @@ describe('P8-A S4 — estimate sign-off (CG-GOV §5, #37)', () => {
         editions: poolBound.editions,
       },
       governance: { users: poolBound.users, sessions: poolBound.sessions, audit: poolBound.audit },
-      dataset: loadPublishedDataset(),
       clock: () => FIXED_INSTANT,
       transact: async (work) =>
         db.transaction(async (tx) => {
@@ -508,6 +507,15 @@ describe('P8-A S4 — estimate sign-off (CG-GOV §5, #37)', () => {
       { users: deps.governance.users, sessions: deps.governance.sessions, clock: deps.clock },
       { bootstrapAdminUsername: TEST_ADMIN.username, bootstrapAdminPassword: TEST_ADMIN.password },
     );
+    // P8-B S3: this fixture creates a version through the real routes, and version
+    // creation binds the ACTIVE edition from the persisted registry — the seed is the
+    // same first-boot step production runs.
+    await seedPricebookEdition({
+      users: deps.governance.users,
+      editions: deps.repositories.editions,
+      transact: deps.transact,
+      clock: deps.clock,
+    });
     const app = createApiServer(deps);
     const login = await app.inject({
       method: 'POST',

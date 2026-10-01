@@ -28,7 +28,6 @@ import {
 import {
   createApiServer,
   ensureBootstrapAdmin,
-  loadPublishedDataset,
   seedPricebookEdition,
   transactOver,
 } from '@costgenius/api';
@@ -82,7 +81,6 @@ beforeAll(async () => {
       sessions: sessionStore,
       audit: new DrizzleAuditEventRepository(db),
     },
-    dataset: loadPublishedDataset(),
     clock: () => FIXED_INSTANT,
     // S3: the audited mutations run on ONE transaction (the canonical factory).
     transact,

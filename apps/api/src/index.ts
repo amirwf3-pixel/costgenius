@@ -6,7 +6,8 @@
  * orchestration: no business calculation, no pricebook lookup, no direct database access.
  *
  * Programmatic use (tests/tools):
- *   `createApiServer(deps)` — inject repositories, dataset and clock.
+ *   `createApiServer(deps)` — inject repositories and clock (edition datasets resolve
+ *   from the persisted registry — P8-B S3).
  *
  * Production entry point:
  *   `main()` reads DATABASE_URL (+ optional PORT/HOST/DATASET_PATH), applies the Drizzle

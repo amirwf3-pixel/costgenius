@@ -25,7 +25,6 @@ import {
 import type { TransactionalRepositories, Transact } from './audit.js';
 import type { ApiDependencies } from './server.js';
 import type { ApiConfig } from './config.js';
-import { loadPublishedDataset } from './dataset.js';
 
 /** Location of the versioned Drizzle migrations (the db package's ./migrations). */
 const MIGRATIONS_FOLDER = new URL('../../../packages/db/migrations', import.meta.url).pathname;
@@ -83,7 +82,9 @@ export async function buildDependencies(config: ApiConfig): Promise<ComposedApi>
       sessions: poolBound.sessions,
       audit: poolBound.audit,
     },
-    dataset: loadPublishedDataset(config.datasetPath),
+    // P8-B S3: no runtime dataset dependency — every edition resolution reads the
+    // persisted registry (D-PB-1 = B); the staged file (config.datasetPath) is the
+    // first-boot SEED artifact only, consumed by seedPricebookEdition.
     // The real clock lives ONLY here, at the impure edge (business layers stay pure).
     clock: () => new Date().toISOString(),
     // S3: the transactional unit of work every audited mutation runs in.

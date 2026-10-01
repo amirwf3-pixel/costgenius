@@ -15,6 +15,7 @@ import {
   contentHashOf,
   ensureActivatable,
   ensureArchivable,
+  ensureSelectable,
   isEditionStatus,
   PRICEBOOK_EDITION_STATUSES,
   validateStagedImport,
@@ -222,5 +223,78 @@ describe('the S2 lifecycle guards (ensureActivatable / ensureArchivable, CG-IR-P
         ensureActivatable(editionOf({ status: 'ACTIVE', importedBy: 'x' }), 'y');
       }),
     ).toBe('EDITION_ALREADY_ACTIVE');
+  });
+});
+
+describe('the S3 selection guard (ensureSelectable, CG-IR-PB@0.2.0 §12, D-PB-3 = B)', () => {
+  /** An edition skeleton with ONLY the fields the guard decides on. */
+  function editionOf(status: EditionStatus): PricebookEdition {
+    const file = readStaged1404();
+    const content = canonicalContentOf(file);
+    return {
+      editionId: file.edition.id,
+      discipline: V1_DISCIPLINE,
+      year: file.edition.year,
+      title: file.edition.title,
+      organization: file.edition.organization,
+      notificationNumber: file.edition.notificationNumber,
+      notificationDate: file.edition.notificationDate,
+      sourceFileHash: file.edition.sourceFileHash ?? 'source-hash',
+      contentHash: contentHashOf(content),
+      content,
+      importReport: validateStagedImport(file),
+      status,
+      supersedesEditionId: null,
+      importedBy: 'importer-1',
+      importedAt: '2026-01-01T00:00:00Z',
+      activatedBy: null,
+      activatedAt: null,
+      archivedBy: null,
+      archivedAt: null,
+    };
+  }
+
+  /** Runs the guard, returning its error code — undefined when it passes. */
+  function guardCode(work: () => void): string | undefined {
+    try {
+      work();
+      return undefined;
+    } catch (error) {
+      const lifecycleError = error as PricebookEditionError;
+      expect(lifecycleError.name).toBe('PricebookEditionError');
+      return lifecycleError.code;
+    }
+  }
+
+  it('ACTIVE and ARCHIVED are selectable for new work (the explicit-ARCHIVED contract driver)', () => {
+    expect(
+      guardCode(() => {
+        ensureSelectable(editionOf('ACTIVE'));
+      }),
+    ).toBeUndefined();
+    expect(
+      guardCode(() => {
+        ensureSelectable(editionOf('ARCHIVED'));
+      }),
+    ).toBeUndefined();
+  });
+
+  it('DRAFT is NEVER selectable → 409 EDITION_NOT_SELECTABLE (§12/§20)', () => {
+    expect(
+      guardCode(() => {
+        ensureSelectable(editionOf('DRAFT'));
+      }),
+    ).toBe('EDITION_NOT_SELECTABLE');
+  });
+
+  it('the DRAFT rejection names the edition and the rule (zero-guess diagnostics)', () => {
+    let message = '';
+    try {
+      ensureSelectable(editionOf('DRAFT'));
+    } catch (error) {
+      message = (error as PricebookEditionError).message;
+    }
+    expect(message).toContain('ir-1404-abniye');
+    expect(message).toContain('DRAFT');
   });
 });

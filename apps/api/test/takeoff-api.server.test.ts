@@ -27,12 +27,7 @@ import {
   migrateDatabase,
   type DbClient,
 } from '@costgenius/db';
-import {
-  createApiServer,
-  ensureBootstrapAdmin,
-  loadPublishedDataset,
-  seedPricebookEdition,
-} from '../src/index.js';
+import { createApiServer, ensureBootstrapAdmin, seedPricebookEdition } from '../src/index.js';
 import {
   attachAuthenticatedServer,
   bindRepositories,
@@ -162,7 +157,6 @@ describe.skipIf(SMOKE_URL === undefined)('takeoff API concurrency (real PostgreS
           editions: poolBound.editions,
         },
         governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
-        dataset: loadPublishedDataset(),
         clock: () => INSTANT,
         transact: transactOver(db),
       }),

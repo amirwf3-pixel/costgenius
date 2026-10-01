@@ -26,12 +26,7 @@ import {
   migrateDatabase,
   type DbClient,
 } from '@costgenius/db';
-import {
-  createApiServer,
-  ensureBootstrapAdmin,
-  loadPublishedDataset,
-  seedPricebookEdition,
-} from '../src/index.js';
+import { createApiServer, ensureBootstrapAdmin, seedPricebookEdition } from '../src/index.js';
 import {
   attachAuthenticatedServer,
   bindRepositories,
@@ -145,6 +140,23 @@ describe.skipIf(SMOKE_URL === undefined)(
 
     beforeAll(async () => {
       const pool = createDbPool(SMOKE_URL as string);
+      // Full clean slate FIRST (the P8-B convention — every other node-postgres suite
+      // does the same): a preceding real-server suite may LEGALLY leave zero ACTIVE
+      // editions (the 0-active state is tested state, e.g. the edition-lifecycle and
+      // edition-binding suites end there), and the pricebook seed below is a no-op on
+      // an existing row — without this reset, this suite's version creation would 409
+      // EDITION_NOT_ACTIVE purely as a function of file order (pre-S3 the NULL insert
+      // stamp tolerated the 0-active registry; S3 resolves the ACTIVE edition before
+      // any mutation). Children before parents, the migration journal AND the 0004
+      // trigger FUNCTIONS (which survive the table drop and would make the re-applied
+      // migration fail with 42723).
+      await pool.query(
+        'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, pricebook_editions, estimates, sessions, audit_events, users, projects CASCADE',
+      );
+      await pool.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
+      await pool.query(
+        'DROP FUNCTION IF EXISTS pricebook_editions_guard_immutable_columns(), pricebook_editions_forbid_delete(), estimate_versions_guard_edition_binding(), estimate_versions_stamp_active_edition() CASCADE',
+      );
       db = createDb(pool);
       await migrateDatabase(db, MIGRATIONS_FOLDER);
       const userStore = new DrizzleUserRepository(db);
@@ -177,7 +189,6 @@ describe.skipIf(SMOKE_URL === undefined)(
               editions: poolBound.editions,
             },
             governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
-            dataset: loadPublishedDataset(),
             clock: () => INSTANT,
             transact: transactOver(db),
           }),

@@ -16,9 +16,10 @@ workspace package in the browser bundle (enforced by ESLint and verified by bund
 inspection). The official 1404 pricebook edition is **persisted** in the
 `pricebook_editions` registry (P8-B S1): a first-boot seed imports the verified staged
 dataset (`DATASET_PATH`) through the normal import gate, directly ACTIVE, and the
-database is the source of truth for editions from then on. The API's row lookup still
-serves from the in-memory published dataset in this stage; edition-aware lookup
-arrives with the later P8-B stages (CG-IR-PRICEBOOK-SPEC@0.2.0).
+database is the source of truth for editions from then on. Since P8-B S3 every runtime
+lookup is edition-aware and registry-resolved: version creation binds the selected
+edition (default the ACTIVE one), and line-add, takeoff transfer and the rows search
+all resolve the persisted edition rows — the API loads no dataset at boot.
 
 ## Environment variables (API)
 

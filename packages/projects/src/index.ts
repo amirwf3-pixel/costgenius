@@ -75,6 +75,11 @@ export {
   type CreateEstimateForProjectInput,
   type StartVersionInput,
 } from './estimate-workflow.js';
+// The BOQ aggregate shapes this layer orchestrates — re-exported so dependants (the
+// API, the web types) see one application-layer surface, exactly like the calc-engine
+// types above (P8-B S3: the API's per-version edition resolver types against
+// EstimateVersion).
+export type { Estimate, EstimateVersion } from '@costgenius/boq';
 export {
   resolveEstimateLines,
   type EstimateLineInput,

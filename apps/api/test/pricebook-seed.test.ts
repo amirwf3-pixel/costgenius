@@ -78,7 +78,6 @@ async function createSeedFixture(): Promise<SeedFixture> {
       sessions: poolBound.sessions,
       audit: poolBound.audit,
     },
-    dataset: loadPublishedDataset(),
     clock: () => FIXED_INSTANT,
     transact: transactOver(db),
   };

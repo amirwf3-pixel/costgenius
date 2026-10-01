@@ -35,12 +35,14 @@ import {
   type PricebookEdition,
   type StagedPricebookFile,
 } from '@costgenius/pricebook';
+import type { Estimate } from '@costgenius/boq';
 import {
   createEstimateForProject,
   createProject,
   startEstimateVersion,
 } from '@costgenius/projects';
 import {
+  DbError,
   DrizzleEstimateRepository,
   DrizzlePricebookEditionRepository,
   DrizzleProjectRepository,
@@ -166,7 +168,11 @@ function derivedEdition(
 }
 
 /** Persists a project + a first estimate version (edition year label '1404'). */
-async function persistDraftVersion(fixture: Fixture, versionId: string): Promise<void> {
+async function persistDraftVersion(
+  fixture: Fixture,
+  versionId: string,
+  editionId?: string,
+): Promise<Estimate> {
   const projects = new DrizzleProjectRepository(fixture.db);
   const estimates = new DrizzleEstimateRepository(fixture.db);
   const project = createProject({ projectId: PROJECT_ID, title: 't', createdAt: INSTANT });
@@ -177,8 +183,10 @@ async function persistDraftVersion(fixture: Fixture, versionId: string): Promise
     createdAt: INSTANT,
     buildingId: 'b1',
     versionId,
+    ...(editionId !== undefined ? { editionId } : {}),
   });
   await estimates.save(updated);
+  return updated;
 }
 
 describe('P8-B S1 schema — pricebook_editions and estimate_versions.edition_id', () => {
@@ -840,5 +848,107 @@ describe('P8-B S2 repository — listEditions and the two guarded lifecycle writ
       ).rows[0]?.n,
     ).toBe('0');
     await pg.close();
+  });
+});
+
+/* ------------------------------------------------------------------------------------------------
+ * P8-B S3 — the EXPLICIT binding (D-PB-3 = B): the API resolves the edition and
+ * persists it verbatim; the insert-time ACTIVE stamp is only ever the NULL net.
+ * -----------------------------------------------------------------------------------------------*/
+
+describe('P8-B S3 explicit binding — persisted editionId skips the stamp; store comparisons', () => {
+  it('persists an explicit editionId verbatim (skipping the ACTIVE stamp) and round-trips it', async () => {
+    const fixture = await createFixture();
+    const base = readStaged1404();
+    // ed-a is ACTIVE; ed-b is ARCHIVED — an explicit ARCHIVED selection must land
+    // verbatim, NOT be stamped over with the ACTIVE edition
+    await fixture.editions.insertEdition({
+      ...derivedEdition(base, 's3-ed-a', '1404'),
+      status: 'ACTIVE',
+      importedBy: fixture.adminId,
+    });
+    await fixture.editions.insertEdition({
+      ...derivedEdition(base, 's3-ed-b', '1404'),
+      status: 'ARCHIVED',
+      importedBy: fixture.adminId,
+    });
+    await persistDraftVersion(fixture, 'v1', 's3-ed-b');
+    const row = (
+      await fixture.pg.query<{ edition_id: string | null }>(
+        `select edition_id from estimate_versions where version_id = 'v1'`,
+      )
+    ).rows[0];
+    expect(row?.edition_id).toBe('s3-ed-b');
+    // the loader round-trips the binding into the domain aggregate
+    const estimates = new DrizzleEstimateRepository(fixture.db);
+    const loaded = await estimates.findById(ESTIMATE_ID);
+    expect(loaded?.versions[0]?.editionId).toBe('s3-ed-b');
+    await fixture.pg.close();
+  });
+
+  it('a presented binding that differs from the stored one is a creation-data conflict, never an update', async () => {
+    const fixture = await createFixture();
+    const base = readStaged1404();
+    await fixture.editions.insertEdition({
+      ...derivedEdition(base, 's3-ed-a', '1404'),
+      status: 'ACTIVE',
+      importedBy: fixture.adminId,
+    });
+    await fixture.editions.insertEdition({
+      ...derivedEdition(base, 's3-ed-b', '1404'),
+      status: 'ARCHIVED',
+      importedBy: fixture.adminId,
+    });
+    const persisted = await persistDraftVersion(fixture, 'v1', 's3-ed-a');
+    const estimates = new DrizzleEstimateRepository(fixture.db);
+    // the same version presented with a DIFFERENT binding → conflict (the DB trigger
+    // is the last line of defence; the store refuses first, deterministically)
+    const rebound: Estimate = {
+      ...persisted,
+      versions: persisted.versions.map((version) =>
+        version.versionId === 'v1' ? { ...version, editionId: 's3-ed-b' } : version,
+      ),
+    };
+    const error = await estimates.save(rebound).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DbError);
+    expect((error as DbError).code).toBe('PERSISTENCE_CONFLICT');
+    expect((error as DbError).message).toContain('creation data');
+    const row = (
+      await fixture.pg.query<{ edition_id: string | null }>(
+        `select edition_id from estimate_versions where version_id = 'v1'`,
+      )
+    ).rows[0];
+    expect(row?.edition_id).toBe('s3-ed-a');
+    await fixture.pg.close();
+  });
+
+  it('tolerates the stamp asymmetry: an aggregate without editionId re-saves over its stamped row', async () => {
+    const fixture = await createFixture();
+    const base = readStaged1404();
+    await fixture.editions.insertEdition({
+      ...derivedEdition(base, 's3-ed-a', '1404'),
+      status: 'ACTIVE',
+      importedBy: fixture.adminId,
+    });
+    // inserted WITHOUT an explicit binding → the trigger stamps s3-ed-a; the very
+    // same in-memory aggregate (still carrying no editionId) re-saves cleanly —
+    // the stored, stamped binding is authoritative
+    const persisted = await persistDraftVersion(fixture, 'v1');
+    expect(persisted.versions[0]?.editionId).toBeUndefined();
+    const row = (
+      await fixture.pg.query<{ edition_id: string | null }>(
+        `select edition_id from estimate_versions where version_id = 'v1'`,
+      )
+    ).rows[0];
+    expect(row?.edition_id).toBe('s3-ed-a');
+
+    const estimates = new DrizzleEstimateRepository(fixture.db);
+    await expect(estimates.save(persisted)).resolves.toBeUndefined();
+
+    // and a re-loaded aggregate (which now carries the stamped binding) re-saves too
+    const loaded = await estimates.findById(ESTIMATE_ID);
+    expect(loaded?.versions[0]?.editionId).toBe('s3-ed-a');
+    await expect(estimates.save(loaded as Estimate)).resolves.toBeUndefined();
+    await fixture.pg.close();
   });
 });

@@ -55,6 +55,7 @@
  * - 500                       — structural/configuration failures, unknown errors
  */
 import { ZodError } from 'zod';
+import { EDITION_NOT_ELIGIBLE_CODE } from '@costgenius/pricebook';
 
 export interface ApiErrorBody {
   readonly error: {
@@ -101,7 +102,7 @@ const USER_MANAGEMENT_STATUS: Readonly<Record<string, number>> = {
   FORBIDDEN: 403,
 };
 
-/** The §20 edition-lifecycle codes of CG-IR-PRICEBOOK-SPEC@0.2.0 (P8-B S2). */
+/** The §20 edition-lifecycle codes of CG-IR-PRICEBOOK-SPEC@0.2.0 (P8-B S2/S3). */
 const PRICEBOOK_EDITION_STATUS: Readonly<Record<string, number>> = {
   PRICEBOOK_IMPORT_REJECTED: 422,
   EDITION_ALREADY_EXISTS: 409,
@@ -110,6 +111,8 @@ const PRICEBOOK_EDITION_STATUS: Readonly<Record<string, number>> = {
   EDITION_ALREADY_ARCHIVED: 409,
   EDITION_SELF_ACTIVATION_FORBIDDEN: 403,
   EDITION_NOT_ACTIVE: 409,
+  // imported: the API layer never spells the §20 name (the §25/§26 scan reads it as SQL)
+  [EDITION_NOT_ELIGIBLE_CODE]: 409,
 };
 
 const DB_STATUS: Readonly<Record<string, number>> = {

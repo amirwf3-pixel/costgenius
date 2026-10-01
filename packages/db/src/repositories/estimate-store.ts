@@ -5,7 +5,9 @@
  * `syncEstimate` is the transactional writer. It is strictly history-preserving:
  * - the referenced project must already be persisted (clear PERSISTENCE_CONFLICT if not);
  * - estimate identity (project, title) is immutable — a mismatch is a conflict;
- * - a version row is inserted once; its creation fields are immutable afterwards;
+ * - a version row is inserted once; its creation fields are immutable afterwards
+ *   (P8-B S3: the `edition_id` binding among them — immutable once set, with the
+ *   insert-time trigger-stamp asymmetry tolerated; see `editionBindingConflicts`);
  * - DRAFT versions only ever GAIN lines: the stored lines must be an exact prefix of the
  *   incoming ones (the domain only appends); anything else is a rewrite conflict;
  * - a FINALIZED version is compared byte-for-byte (canonical JSON): different content —
@@ -29,6 +31,24 @@ import {
   versionFromRows,
   versionToRow,
 } from './serialization.js';
+
+/**
+ * P8-B S3: does an incoming version's edition binding conflict with the stored row's?
+ * The stored `edition_id` is authoritative and immutable (the migration trigger);
+ * the comparison tolerates exactly one asymmetry — the incoming aggregate may predate
+ * its own persistence and carry NO `editionId` while the stored row was stamped by
+ * the insert-time trigger (an insert that arrived NULL). In that direction the stored
+ * binding wins silently. But a version that PRESENTS an `editionId` must present
+ * exactly the stored one: a different binding (or one the stored row never had) is a
+ * creation-data conflict, never an update.
+ */
+function editionBindingConflicts(
+  storedEditionId: string | null,
+  incoming: string | undefined,
+): boolean {
+  if (incoming === undefined) return false;
+  return storedEditionId !== incoming;
+}
 
 export async function syncEstimate(db: DbExecutor, estimate: Estimate): Promise<void> {
   const projectRow = (
@@ -100,6 +120,7 @@ export async function syncEstimate(db: DbExecutor, estimate: Estimate): Promise<
         versionRow.versionNumber === version.versionNumber &&
         versionRow.createdAt === version.createdAt &&
         versionRow.edition === version.edition &&
+        !editionBindingConflicts(versionRow.editionId, version.editionId) &&
         versionRow.buildingId === (version.buildingId ?? null) &&
         canonicalJson(versionRow.metadata) === canonicalJson(version.metadata) &&
         canonicalJson(storedLines) === canonicalJson(version.lines);
@@ -117,6 +138,7 @@ export async function syncEstimate(db: DbExecutor, estimate: Estimate): Promise<
       versionRow.versionNumber !== version.versionNumber ||
       versionRow.createdAt !== version.createdAt ||
       versionRow.edition !== version.edition ||
+      editionBindingConflicts(versionRow.editionId, version.editionId) ||
       versionRow.buildingId !== (version.buildingId ?? null) ||
       canonicalJson(versionRow.metadata) !== canonicalJson(version.metadata)
     ) {

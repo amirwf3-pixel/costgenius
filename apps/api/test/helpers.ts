@@ -11,7 +11,6 @@ import {
   seedPricebookEdition,
   type ApiDependencies,
 } from '../src/index.js';
-import { loadPublishedDataset } from '../src/dataset.js';
 import { hashPassword } from '../src/auth.js';
 
 // The repository factory and the transaction capability are the CANONICAL ones from
@@ -71,7 +70,6 @@ async function buildPgliteDependencies(): Promise<{
       sessions: poolBound.sessions,
       audit: poolBound.audit,
     },
-    dataset: loadPublishedDataset(),
     clock: () => FIXED_INSTANT,
     transact: transactOver(db),
   };
@@ -148,6 +146,92 @@ export function syntheticStagedFile(tag: string): {
           section: 'Chapter 19, Group 1',
           sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
         },
+      },
+    ],
+  };
+}
+
+/**
+ * P8-B S3 — a synthetic staged-import document whose DATASET is deliberately
+ * distinguishable from the official 1404 edition (CG-IR-PB@0.2.0 §12/§21): every
+ * row carries a distinct `sourceRef.edition` label (default '1410', so a version
+ * bound to this edition gets a distinct year label), one row shares a code with the
+ * official edition at a DIFFERENT price (010102 — the per-version resolution proof),
+ * and one code exists ONLY here (019999 — the unknown-in-1404 proof). Passes the same
+ * `validateStagedImport` gate (the 010101 anchor keeps its exact pinned values).
+ * Development/test ONLY — no real edition data.
+ */
+export function syntheticEditionStagedFile(
+  tag: string,
+  editionLabel = '1410',
+): {
+  formatVersion: '1';
+  kind: 'staged-import';
+  edition: Record<string, unknown>;
+  rows: Array<Record<string, unknown>>;
+} {
+  const safeTag = tag.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+  const sourceRef = (printedPage: string, section: string): Record<string, unknown> => ({
+    sourceDocument: `فهرست آزمونی رشته ابنیه ${editionLabel}`,
+    edition: editionLabel,
+    printedPage,
+    section,
+    sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+  });
+  return {
+    formatVersion: '1',
+    kind: 'staged-import',
+    edition: {
+      id: `ir-${editionLabel}-abniye-${safeTag}`,
+      title: `فهرست آزمونی ${editionLabel}`,
+      organization: 'سازمان برنامه و بودجه کشور',
+      year: editionLabel,
+      notificationNumber: null,
+      notificationDate: null,
+      sourceFileHash: 'c49e315548152da03d54394ca46b558592817de1ad24b29392d84311216fae0f',
+    },
+    rows: [
+      {
+        // the verified anchor — exact pinned values (the gate enforces them); the
+        // row shape mirrors the official staged file exactly (deps/notes arrays
+        // included — line binding copies them verbatim)
+        code: '010101',
+        chapter: 'chapter-1',
+        group: '1',
+        description: 'خاکبرداری در زمین‌های نرم',
+        unit: { label: 'مترمربع', code: 'm2' },
+        basePrice: '2890',
+        status: 'VERIFIED_SPEC_ONLY',
+        sourceRef: sourceRef('11', 'Chapter 1, Group 1'),
+        externalDependencies: [],
+        notes: [],
+      },
+      {
+        // shared with the official 1404 edition (010301 = 3065000 there) at a
+        // DIFFERENT price — proves which edition's dataset priced the line
+        code: '010301',
+        chapter: 'chapter-3',
+        group: '1',
+        description: `تخریب آزمونی ${safeTag}`,
+        unit: { label: 'مترمربع', code: 'm2' },
+        basePrice: '7777',
+        status: 'VERIFIED_SPEC_ONLY',
+        sourceRef: sourceRef('31', 'Chapter 3, Group 1'),
+        externalDependencies: [],
+        notes: [],
+      },
+      {
+        // exists ONLY in this edition — unknown in the official 1404 dataset
+        code: '019999',
+        chapter: 'chapter-19',
+        group: '1',
+        description: `قلم اختصاصی ${safeTag}`,
+        unit: { label: 'مترمربع', code: 'm2' },
+        basePrice: '555',
+        status: 'VERIFIED_SPEC_ONLY',
+        sourceRef: sourceRef('99', 'Chapter 19, Group 1'),
+        externalDependencies: [],
+        notes: [],
       },
     ],
   };

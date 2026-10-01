@@ -45,6 +45,8 @@ export interface EstimateVersion {
   readonly status: VersionStatus;
   readonly createdAt: string;
   readonly edition: string;
+  /** P8-B S3: the bound pricebook edition's exact identity (immutable once set). */
+  readonly editionId?: string;
   readonly buildingId?: string;
   readonly metadata: Readonly<Record<string, string>>;
   readonly lines: readonly BoqLine[];
@@ -111,6 +113,18 @@ export interface PricebookRowRef {
   readonly status: string;
 }
 
+/**
+ * P8-B S3: one edition of the #39 list (viewer-readable) — the version-creation
+ * selector's data. DRAFT editions are never offered client-side (the server refuses
+ * them regardless — `EDITION_NOT_SELECTABLE`).
+ */
+export interface PricebookEditionSummary {
+  readonly editionId: string;
+  readonly year: string;
+  readonly title: string;
+  readonly status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+}
+
 /** The stable backend error body: {error: {code, message, details?}}. */
 export interface ApiErrorBody {
   readonly error: {
@@ -131,6 +145,12 @@ export interface NewEstimateInput {
 
 export interface NewVersionInput {
   readonly buildingId: string;
+  /**
+   * P8-B S3 (D-PB-3 = B): the edition the new version binds to. Undefined → the
+   * server binds the current ACTIVE edition; an explicit id must be ACTIVE or
+   * ARCHIVED (a DRAFT is never selectable). Immutable once bound.
+   */
+  readonly editionId?: string;
 }
 
 /**

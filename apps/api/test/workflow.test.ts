@@ -30,9 +30,8 @@ import {
   type DbClient,
 } from '@costgenius/db';
 import type { FinalizedEstimate } from '@costgenius/projects';
-import { createApiServer, ensureBootstrapAdmin } from '../src/index.js';
+import { createApiServer, ensureBootstrapAdmin, seedPricebookEdition } from '../src/index.js';
 import type { ApiDependencies } from '../src/index.js';
-import { loadPublishedDataset } from '../src/index.js';
 import {
   attachAuthenticatedServer,
   bindRepositories,
@@ -123,6 +122,8 @@ async function runProductionWorkflow(app: FastifyInstance): Promise<void> {
     status: 'draft',
     createdAt: FIXED_INSTANT,
     edition: '1404',
+    // P8-B S3: the version's edition binding rides additively on every version body
+    editionId: 'ir-1404-abniye',
     buildingId: BUILDING_ID,
     metadata: {},
     lines: [],
@@ -320,12 +321,19 @@ describe.skipIf(SMOKE === undefined)('production workflow on a REAL PostgreSQL s
     // class: this leg previously dropped only the five estimate-family tables, so a
     // re-run on a used database failed with 42P07 `finalized_takeoffs already exists`;
     // the list now covers the nine domain tables plus the three governance tables of
-    // migration 0002. Test semantics are otherwise unchanged.)
+    // migration 0002. Test semantics are otherwise unchanged. P8-B S3 extends the
+    // same repair to the S1 world: the 13th table `pricebook_editions` of migration
+    // 0004 AND its trigger functions — without them, a re-run on a used database
+    // fails 42P07 `pricebook_editions already exists` / 42723, because functions
+    // survive the table drop.)
     pool = createDbPool(SMOKE as string);
     await pool.query(
-      'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, estimates, sessions, audit_events, users, projects CASCADE',
+      'DROP TABLE IF EXISTS takeoff_lines, takeoff_sheets, finalized_takeoffs, takeoff_documents, boq_lines, finalized_estimates, estimate_versions, pricebook_editions, estimates, sessions, audit_events, users, projects CASCADE',
     );
     await pool.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
+    await pool.query(
+      'DROP FUNCTION IF EXISTS pricebook_editions_guard_immutable_columns(), pricebook_editions_forbid_delete(), estimate_versions_guard_edition_binding(), estimate_versions_stamp_active_edition() CASCADE',
+    );
     await pool.end();
 
     pool = createDbPool(SMOKE as string);
@@ -344,7 +352,6 @@ describe.skipIf(SMOKE === undefined)('production workflow on a REAL PostgreSQL s
         editions: poolBound.editions,
       },
       governance: { users: userStore, sessions: sessionStore, audit: poolBound.audit },
-      dataset: loadPublishedDataset(),
       clock: () => FIXED_INSTANT,
       transact: transactOver(db),
     };
@@ -357,6 +364,15 @@ describe.skipIf(SMOKE === undefined)('production workflow on a REAL PostgreSQL s
         bootstrapAdminPassword: TEST_ADMIN.password,
       },
     );
+    // P8-B S3: the golden workflow creates a version, and version creation binds the
+    // ACTIVE edition from the persisted registry (D-PB-1 = B) — the same first-boot
+    // seed step production runs after migrations.
+    await seedPricebookEdition({
+      users: userStore,
+      editions: deps.repositories.editions,
+      transact: deps.transact,
+      clock: deps.clock,
+    });
     app = (await attachAuthenticatedServer(createApiServer(deps))).app;
   });
 

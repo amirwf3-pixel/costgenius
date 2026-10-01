@@ -42,6 +42,14 @@ export const createVersionSchema = z
     createdAt: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.string()).optional(),
     versionId: z.string().min(1).optional(),
+    /**
+     * P8-B S3 (D-PB-3 = B, CG-IR-PB@0.2.0 §12): the edition the new version binds to.
+     * Omitted → the discipline's ACTIVE edition (409 EDITION_NOT_ACTIVE when none is);
+     * supplied → an ACTIVE or ARCHIVED edition (404 EDITION_NOT_FOUND when unknown,
+     * 409 EDITION_NOT_SELECTABLE for a DRAFT). Once bound, immutable for the
+     * version's life. Shape mirrors `editionIdParamSchema`.
+     */
+    editionId: z.string().min(1).max(200).optional(),
   })
   .strict();
 export type CreateVersionRequest = z.infer<typeof createVersionSchema>;
@@ -183,11 +191,17 @@ export const projectIdParamSchema = z.string().uuid();
  * order, capped by `limit` — a presentation-level lookup only: the binding of an
  * estimate line to a pricebook row always goes through the exact-code add-lines
  * contract (no fuzzy resolution is ever performed).
+ *
+ * P8-B S3 (§12/§17): the optional `editionId` makes the add-line dialog search the
+ * WORKSPACE VERSION's edition (never a global search) so suggestions match what
+ * binding accepts. Default: the ACTIVE edition. An explicit id must name an ACTIVE or
+ * ARCHIVED edition (DRAFT → 409 EDITION_NOT_SELECTABLE; unknown → 404).
  */
 export const pricebookLookupQuerySchema = z
   .object({
     search: z.string().min(1).max(64),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    editionId: z.string().min(1).max(200).optional(),
   })
   .strict();
 export type PricebookLookupQuery = z.infer<typeof pricebookLookupQuerySchema>;

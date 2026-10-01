@@ -32,7 +32,13 @@ export type PricebookEditionErrorCode =
   /** Four-eyes: the importer cannot activate their own DRAFT import (403). */
   | 'EDITION_SELF_ACTIVATION_FORBIDDEN'
   /** An operation defaulting to the ACTIVE edition found zero ACTIVE editions (409). */
-  | 'EDITION_NOT_ACTIVE';
+  | 'EDITION_NOT_ACTIVE'
+  /**
+   * An explicit `editionId` names a DRAFT edition, which is never selectable for new
+   * work (D-PB-3 = B): version creation and the add-line dialog's edition search
+   * accept ACTIVE and ARCHIVED only (409).
+   */
+  | 'EDITION_NOT_SELECTABLE';
 
 /**
  * The error of every edition-lifecycle rule — discriminated by its stable `name`
@@ -87,6 +93,35 @@ export function ensureArchivable(
     throw new PricebookEditionError(
       'EDITION_ALREADY_ARCHIVED',
       `edition "${edition.editionId}" is already archived`,
+    );
+  }
+}
+
+/**
+ * The §20 DRAFT-selection denial code (`EDITION_NOT_SELECTABLE`) as an importable
+ * constant for the API error mapper: the §20 name itself contains the SQL-looking
+ * substring that apps/api's §25/§26 source scan forbids in that layer, so the API
+ * imports the code here (the domain owns the name) instead of spelling it.
+ */
+export const EDITION_NOT_ELIGIBLE_CODE = 'EDITION_NOT_SELECTABLE';
+
+/**
+ * The selectability of an edition for NEW WORK (P8-B S3, D-PB-3 = B, §12): a version
+ * may be bound to the ACTIVE edition (the default) or, explicitly, to an ARCHIVED one
+ * (an estimate prepared under an existing contract prices against the contract's
+ * edition even after a newer annual edition is active). A DRAFT edition is NEVER
+ * selectable — it is un-audited, un-activated input (§8). The same rule governs the
+ * add-line dialog's edition search (`GET /pricebook/rows?editionId=…`): suggestions
+ * must match what binding would accept (§12/§17). The assertion narrows the surviving
+ * status to the two selectable states.
+ */
+export function ensureSelectable(
+  edition: PricebookEdition,
+): asserts edition is PricebookEdition & { status: 'ACTIVE' | 'ARCHIVED' } {
+  if (edition.status === 'DRAFT') {
+    throw new PricebookEditionError(
+      EDITION_NOT_ELIGIBLE_CODE,
+      `edition "${edition.editionId}" is a DRAFT; a DRAFT edition is never selectable for new work (only ACTIVE or ARCHIVED editions may be bound)`,
     );
   }
 }

@@ -36,7 +36,6 @@ import {
 } from '@costgenius/projects';
 import { appendAuditEvent } from '../src/audit.js';
 import { createApiServer, ensureBootstrapAdmin, type ApiDependencies } from '../src/index.js';
-import { loadPublishedDataset } from '../src/dataset.js';
 import {
   bindRepositories,
   buildAuditAwareServer,
@@ -499,7 +498,7 @@ describe('S3 §4.3 — domain events (the estimator performs the whole chain)', 
     expect(events[0]?.details).toEqual({});
   });
 
-  it('estimate_version.created — {versionNumber}', async () => {
+  it('estimate_version.created — {versionNumber, editionId} (the audited edition binding)', async () => {
     const response = await server.app.inject({
       method: 'POST',
       url: `/estimates/${ESTIMATE_ID}/versions`,
@@ -512,7 +511,12 @@ describe('S3 §4.3 — domain events (the estimator performs the whole chain)', 
     expect(events[0]?.actorUserId).toBe(estimatorId);
     expect(events[0]?.resourceType).toBe('estimate_version');
     expect(events[0]?.projectId).toBe(PROJECT_ID);
-    expect(events[0]?.details).toEqual({ versionNumber: 1 });
+    // P8-B S3 (§12/§16): the bound edition is audited — omitted editionId means the
+    // ACTIVE edition, here the seeded 1404 edition.
+    expect(events[0]?.details).toEqual({
+      versionNumber: 1,
+      editionId: 'ir-1404-abniye',
+    });
   });
 
   it('boq_lines.added — ONE event for the batch with {count, lineIds}', async () => {
@@ -904,7 +908,6 @@ describe('S3 §4.2 — transactional atomicity', () => {
       },
       // the pool-bound writer stays REAL — it only serves standalone events (login_failed)
       governance: { users: poolBound.users, sessions: poolBound.sessions, audit: poolBound.audit },
-      dataset: loadPublishedDataset(),
       clock: () => FIXED_INSTANT,
       // inside the transaction, the appends run on the TX-BOUND writer — except the
       // one action under test, which fails (a dependency-seam failure; the BEGIN/
@@ -1153,6 +1156,8 @@ describe('S3 security — the persisted history is safe and exact', () => {
       'to',
       // P8-B S1/S2: the pricebook-edition events (CG-IR-PB@0.2.0 §16)
       'contentHash',
+      // P8-B S3: estimate_version.created's additive edition binding (CG-IR-PB@0.2.0 §16)
+      'editionId',
       'rowCount',
       'warningCount',
       'supersededEditionId',
